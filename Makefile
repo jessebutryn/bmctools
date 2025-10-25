@@ -1,6 +1,6 @@
 # Convenience make targets for developing and testing inside Docker
 
-.PHONY: build up shell test
+.PHONY: build shell
 
 build:
 	docker build -t bmctools:dev .
