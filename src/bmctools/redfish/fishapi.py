@@ -14,12 +14,16 @@ class RedfishAPI:
         self.session.auth = (user, password)
         self.session.headers.update({
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'OData-Version': '4.0'
         })
         self.verify_ssl = verify_ssl
 
         if not self.verify_ssl:
             self.disable_ssl_verification()
+        
+        # Try to establish a Redfish session
+        self._establish_session()
 
 
     def disable_ssl_verification(self):
@@ -49,11 +53,11 @@ class RedfishAPI:
         return response
 
 
-    def patch(self, endpoint, data=None):
+    def patch(self, endpoint, data=None, headers=None):
         url = self.base_url + endpoint
         if data:
             data = json.dumps(data)
-        response = self.session.patch(url, data=data, verify=self.verify_ssl)
+        response = self.session.patch(url, data=data, headers=headers, verify=self.verify_ssl)
         return response
 
 
@@ -61,3 +65,31 @@ class RedfishAPI:
         url = self.base_url + endpoint
         response = self.session.delete(url, verify=self.verify_ssl)
         return response
+
+
+    def _establish_session(self):
+        """Attempt to create a Redfish session if supported."""
+        try:
+            # Try session-based authentication
+            session_url = f"{self.base_url}/redfish/v1/SessionService/Sessions"
+            payload = {
+                "UserName": self.user,
+                "Password": self.password
+            }
+            response = self.session.post(
+                session_url,
+                json=payload,
+                verify=self.verify_ssl,
+                timeout=10
+            )
+            
+            if response.status_code == 201:
+                # Session created successfully
+                auth_token = response.headers.get('X-Auth-Token')
+                if auth_token:
+                    self.session.headers.update({'X-Auth-Token': auth_token})
+                    # Remove basic auth since we have a token
+                    self.session.auth = None
+        except Exception:
+            # If session creation fails, fall back to basic auth
+            pass
