@@ -1,4 +1,4 @@
-FROM ubuntu:jammy
+FROM --platform=linux/amd64 ubuntu:jammy
 
 ## Install Dependencies
 RUN apt update && apt install -y libssl-dev wget pciutils libargtable2-0 dnsutils iputils-ping

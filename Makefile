@@ -3,8 +3,8 @@
 .PHONY: build shell
 
 build:
-	docker build -t bmctools:dev .
+	docker build --platform linux/amd64 -t bmctools:dev .
 
 shell:
-	docker run --rm -it -v $(PWD):/opt/bmctools bmctools:dev /bin/bash
+	docker run --platform linux/amd64 --rm -it -v $(PWD):/opt/bmctools bmctools:dev /bin/bash
 
