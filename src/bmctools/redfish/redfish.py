@@ -61,8 +61,51 @@ class Redfish:
             return None
         
     
-    def get_boot_options(self) -> list:
-        if self.manufacturer_class:
-            return self.manufacturer_class.get_boot_options()
-        else:
+    def get_boot_order(self) -> list:
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+        
+        try:
+            return self.manufacturer_class.get_boot_order()
+        except AttributeError:
+            raise NotImplementedError(f'Boot order retrieval not implemented for manufacturer: {self.manufacturer}')
+        
+    
+    def get_boot_options(self, nocache: bool = False) -> list:
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+        
+        try:
+            return self.manufacturer_class.get_boot_options(nocache=nocache)
+        except AttributeError:
             raise NotImplementedError(f'Boot options retrieval not implemented for manufacturer: {self.manufacturer}')
+        
+
+    def get_boot_option_by_mac(self, mac_address: str, nocache: bool = False) -> dict:
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+        
+        try:
+            return self.manufacturer_class.get_boot_option_by_mac(mac_address, nocache=nocache)
+        except AttributeError:
+            raise NotImplementedError(f'Boot option by MAC retrieval not implemented for manufacturer: {self.manufacturer}')
+        
+
+    def get_boot_option_by_alias(self, alias: str, nocache: bool = False) -> dict:
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+        
+        try:
+            return self.manufacturer_class.get_boot_option_by_alias(alias, nocache=nocache)
+        except AttributeError:
+            raise NotImplementedError(f'Boot option by alias retrieval not implemented for manufacturer: {self.manufacturer}')
+        
+    
+    def set_boot_order(self, boot_order: list) -> None:
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+        
+        try:
+            self.manufacturer_class.set_boot_order(boot_order)
+        except AttributeError:
+            raise NotImplementedError(f'Setting boot order not implemented for manufacturer: {self.manufacturer}')
