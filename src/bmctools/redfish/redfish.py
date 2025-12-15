@@ -57,6 +57,9 @@ class Redfish:
         if manufacturer in ['asus', 'asustekcomputerinc.', 'asustek computer inc.']:
             from bmctools.redfish.asusfish import AsusFish
             return AsusFish(self.api)
+        if manufacturer in ['dell inc.']:
+            from bmctools.redfish.dellfish import DellFish
+            return DellFish(self.api)
         else:
             return None
         
