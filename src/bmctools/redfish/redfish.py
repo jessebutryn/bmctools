@@ -8,10 +8,10 @@ class Redfish:
     This class initializes the RedfishAPI and determines the manufacturer-specific
     implementation to use based on the system's manufacturer.
     """
-    def __init__(self, ip: str, username: str, password: str, verify_ssl: bool = False):
+    def __init__(self, ip: str, username: str, password: str, verify_ssl: bool = False, manufacturer: Optional[str] = None):
         self.api = RedfishAPI(ip, username, password, verify_ssl=verify_ssl)
         self.system_id = self.get_system_id()
-        self.manufacturer = self.get_manufacturer()
+        self.manufacturer = manufacturer.lower() if manufacturer else self.get_manufacturer()
         self.manufacturer_class = self.instantiate_manufacturer_class(self.manufacturer)
 
 

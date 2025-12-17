@@ -120,13 +120,7 @@ class AsusFish:
         
         # Get the current ETag from the SD endpoint
         sd_endpoint = '/redfish/v1/Systems/Self/SD'
-        get_response = self.api.get(sd_endpoint)
-        if get_response.status_code != 200:
-            raise ValueError(f'Failed to get current system state, status code: {get_response.status_code}')
-        
-        etag = get_response.headers.get('ETag')
-        if not etag:
-            raise ValueError('ETag header not found in response')
+        etag = self._get_sd_etag(sd_endpoint)
         
         payload = {
             "Boot": {
@@ -146,8 +140,30 @@ class AsusFish:
             except:
                 error_detail = f"\nResponse text: {response.text}"
             raise ValueError(f'Failed to set boot order, status code: {response.status_code}{error_detail}')
-    
 
+
+    def _get_sd_etag(self, sd_endpoint: str = '/redfish/v1/Systems/Self/SD') -> str:
+        """Retrieve the ETag header from the SD (FutureState) endpoint.
+
+        Args:
+            sd_endpoint: The SD endpoint to query (defaults to Systems/Self/SD).
+
+        Returns:
+            The ETag header string.
+
+        Raises:
+            ValueError: If the SD endpoint cannot be read or the ETag header is missing.
+        """
+        get_response = self.api.get(sd_endpoint)
+        if get_response.status_code != 200:
+            raise ValueError(f'Failed to get current system state, status code: {get_response.status_code}')
+
+        etag = get_response.headers.get('ETag')
+        if not etag:
+            raise ValueError('ETag header not found in response')
+
+        return etag
+    
 
     def get_pending_boot_order(self) -> list:
         """Get the pending boot order from the FutureState (SD) endpoint."""
