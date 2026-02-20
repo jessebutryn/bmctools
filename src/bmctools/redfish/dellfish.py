@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 
 class DellFish:
     """
@@ -82,18 +83,19 @@ class DellFish:
             raise ValueError(f'Failed to retrieve boot options, status code: {response.status_code}')
 
 
-    def get_boot_option_by_mac(self, mac_address: str, nocache: bool = False) -> dict:
+    def get_boot_option_by_mac(self, mac_address: str, type: Optional[str] = None, nocache: bool = False) -> dict:
         """Get a boot option by MAC address.
         
         Args:
             mac_address: MAC address to search for (format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX)
+            type: Optional boot option type to filter by (e.g., 'PXE')
             nocache: If True, force a fresh API call instead of using cached boot options
         
         Returns:
             Dict containing the boot option data
         
         Raises:
-            ValueError: If no boot option is found with the specified MAC address
+            ValueError: If no boot option is found with the specified MAC address or type
         """
         # Normalize MAC address to uppercase without separators
         def normalize(mac: str) -> str:
@@ -153,9 +155,12 @@ class DellFish:
 
                 for cand in mac_candidates:
                     if cand and normalize(cand) == target:
+                        # Check type if specified
+                        if type and option.get('BootOptionType') is not None and option.get('BootOptionType', '').lower() != type.lower():
+                            continue
                         return option
 
-        raise ValueError(f'No boot option found with MAC address: {mac_address}')
+        raise ValueError(f'No boot option found with MAC address: {mac_address}' + (f' and type: {type}' if type else ''))
 
 
     def get_boot_option_by_alias(self, alias: str, nocache: bool = False) -> dict:
@@ -224,15 +229,17 @@ class DellFish:
                 error_msg += f' Unknown options: {sorted(extra)}.'
             raise ValueError(error_msg)
         
-        # Dell systems use PATCH on the System resource
+        # Dell uses the Settings endpoint for boot configuration changes
+        endpoint = '/redfish/v1/Systems/System.Embedded.1/Settings'
+        
         payload = {
             "Boot": {
                 "BootOrder": boot_order
             }
         }
         
-        response = self.api.patch(f'/redfish/v1/Systems/{self.system_id}', data=payload)
-        if response.status_code in [200, 204]:
+        response = self.api.patch(endpoint, data=payload)
+        if response.status_code in [200, 202, 204]:
             # Clear cached boot options as they may have changed
             self.boot_options = None
             return True

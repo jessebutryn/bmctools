@@ -56,3 +56,19 @@ RUN chmod +x /usr/bin/saa
 
 WORKDIR /tmp
 RUN rm -rf /tmp/saa
+
+# Install Python and pip
+RUN apt update && apt install -y python3 python3-pip
+
+# Install bmctools package
+WORKDIR /app
+COPY setup.py README.md ./
+COPY src/ src/
+
+RUN pip3 install --no-cache-dir -e .
+
+# Set the entrypoint to the CLI
+ENTRYPOINT ["bmctools"]
+
+# Default command (shows help if no args provided)
+CMD ["--help"]
