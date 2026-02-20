@@ -8,6 +8,11 @@ setup(
     install_requires=[
         'requests',
     ],
+    entry_points={
+        'console_scripts': [
+            'bmctools=bmctools.cli.main:main',
+        ],
+    },
     author='Your Name',
     author_email='your.email@example.com',
     description='A collection of tools for interacting with Baseboard Management Controllers (BMCs)',

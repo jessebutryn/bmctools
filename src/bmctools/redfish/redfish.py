@@ -84,12 +84,12 @@ class Redfish:
             raise NotImplementedError(f'Boot options retrieval not implemented for manufacturer: {self.manufacturer}')
         
 
-    def get_boot_option_by_mac(self, mac_address: str, nocache: bool = False) -> dict:
+    def get_boot_option_by_mac(self, mac_address: str, type: Optional[str] = None, nocache: bool = False) -> dict:
         if not self.manufacturer_class:
             raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
         
         try:
-            return self.manufacturer_class.get_boot_option_by_mac(mac_address, nocache=nocache)
+            return self.manufacturer_class.get_boot_option_by_mac(mac_address, type=type, nocache=nocache)
         except AttributeError:
             raise NotImplementedError(f'Boot option by MAC retrieval not implemented for manufacturer: {self.manufacturer}')
         
@@ -107,8 +107,127 @@ class Redfish:
     def set_boot_order(self, boot_order: list) -> None:
         if not self.manufacturer_class:
             raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
-        
+
         try:
             self.manufacturer_class.set_boot_order(boot_order)
         except AttributeError:
             raise NotImplementedError(f'Setting boot order not implemented for manufacturer: {self.manufacturer}')
+
+
+    def reset_system(self, reset_type: str = None) -> bool:
+        """Reset/reboot the system.
+
+        Args:
+            reset_type: Type of reset (e.g., GracefulRestart, ForceRestart, ForceOff, On).
+                        If None, the manufacturer class will auto-select.
+
+        Returns:
+            True if reset command was accepted
+
+        Raises:
+            NotImplementedError: If not implemented for the manufacturer
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.reset_system(reset_type)
+        except AttributeError:
+            raise NotImplementedError(f'System reset not implemented for manufacturer: {self.manufacturer}')
+
+
+    def get_supported_reset_types(self) -> dict:
+        """Get supported reset types for this system.
+
+        Returns:
+            Dict containing supported reset types
+
+        Raises:
+            NotImplementedError: If not implemented for the manufacturer
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.get_supported_reset_types()
+        except AttributeError:
+            raise NotImplementedError(f'Reset types not implemented for manufacturer: {self.manufacturer}')
+
+
+    def get_firmware_inventory(self) -> dict:
+        """Get firmware inventory (BIOS, BMC versions, etc.).
+
+        Returns:
+            Dict containing firmware inventory information
+
+        Raises:
+            NotImplementedError: If not implemented for the manufacturer
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.get_firmware_inventory()
+        except AttributeError:
+            raise NotImplementedError(f'Firmware inventory not implemented for manufacturer: {self.manufacturer}')
+
+
+    def get_update_service_info(self) -> dict:
+        """Get UpdateService information and current update status.
+
+        Returns:
+            Dict containing UpdateService status and configuration
+
+        Raises:
+            NotImplementedError: If not implemented for the manufacturer
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.get_update_service_info()
+        except AttributeError:
+            raise NotImplementedError(f'Update service info not implemented for manufacturer: {self.manufacturer}')
+
+
+    def update_bmc_firmware(self, firmware_path: str, preserve_config: bool = True) -> dict:
+        """Update BMC firmware.
+
+        Args:
+            firmware_path: Path to the BMC firmware file
+            preserve_config: Whether to preserve BMC configuration (default: True)
+
+        Returns:
+            Dict containing update status information
+
+        Raises:
+            NotImplementedError: If not implemented for the manufacturer
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.update_bmc_firmware(firmware_path, preserve_config=preserve_config)
+        except AttributeError:
+            raise NotImplementedError(f'BMC firmware update not implemented for manufacturer: {self.manufacturer}')
+
+
+    def update_bios_firmware(self, firmware_path: str) -> dict:
+        """Update BIOS firmware.
+
+        Args:
+            firmware_path: Path to the BIOS firmware file
+
+        Returns:
+            Dict containing update status information
+
+        Raises:
+            NotImplementedError: If not implemented for the manufacturer
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.update_bios_firmware(firmware_path)
+        except AttributeError:
+            raise NotImplementedError(f'BIOS firmware update not implemented for manufacturer: {self.manufacturer}')
