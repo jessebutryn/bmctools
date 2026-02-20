@@ -1,4 +1,8 @@
+from pathlib import Path
 from setuptools import setup, find_packages
+
+here = Path(__file__).parent.resolve()
+long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setup(
     name='bmctools',
@@ -13,21 +17,30 @@ setup(
             'bmctools=bmctools.cli.main:main',
         ],
     },
-    author='Your Name',
-    author_email='your.email@example.com',
+    author='Jesse Butryn',
+    author_email='jesse.butryn@example.com',
     description='A collection of tools for interacting with Baseboard Management Controllers (BMCs)',
-    long_description=open('README.md').read(),
+    long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/yourusername/bmctools',
+    license='GPL-3.0-only',
+    url='https://github.com/jessebutryn/bmctools',
+    project_urls={
+        'Bug Tracker': 'https://github.com/jessebutryn/bmctools/issues',
+        'Source Code': 'https://github.com/jessebutryn/bmctools',
+    },
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License',
+        'Intended Audience :: System Administrators',
+        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
+        'Topic :: System :: Hardware',
+        'Topic :: System :: Systems Administration',
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.9',
 )
