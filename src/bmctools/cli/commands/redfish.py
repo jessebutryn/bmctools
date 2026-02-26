@@ -154,6 +154,45 @@ def setup_dell_commands(parser):
     p.add_argument('--privileges', required=True,
                   help='Privilege bitmask')
 
+    # get-boot-options
+    p = subparsers.add_parser('get-boot-options', help='Get Dell boot options')
+    p.add_argument('--no-cache', action='store_true',
+                  help='Force fresh query (bypass cache)')
+
+    # get-nics
+    subparsers.add_parser('get-nics', help='Get NIC information and MAC addresses')
+
+    # get-nic-attrs
+    p = subparsers.add_parser('get-nic-attrs', help='Get OEM network attributes for a NIC by MAC')
+    p.add_argument('-m', '--mac', required=True,
+                  help='MAC address of the NIC (e.g., 04:32:01:D8:C0:B0)')
+
+    # boot-first-by-mac
+    p = subparsers.add_parser('boot-first-by-mac', help='Move a NIC to the front of the boot order by MAC')
+    p.add_argument('-m', '--mac', required=True,
+                  help='MAC address of the NIC')
+    p.add_argument('--type',
+                  help='Boot option type filter (e.g., PXE)')
+
+    # setup-pxe-boot
+    p = subparsers.add_parser('setup-pxe-boot',
+                              help='Enable PXE on a NIC and set it first in boot order')
+    p.add_argument('-m', '--mac', required=True,
+                  help='MAC address of the NIC')
+    p.add_argument('--protocol', default='IPv4',
+                  choices=['IPv4', 'IPv6', 'IPv4andIPv6'],
+                  help='PXE protocol (default: IPv4)')
+    p.add_argument('--no-reboot', action='store_true',
+                  help='Do not reboot if PXE needs enabling (stage only)')
+
+    # enable-pxe
+    p = subparsers.add_parser('enable-pxe', help='Enable PXE boot on a NIC by MAC address')
+    p.add_argument('-m', '--mac', required=True,
+                  help='MAC address of the NIC (e.g., 04:32:01:D8:C0:B0)')
+    p.add_argument('--protocol', default='IPv4',
+                  choices=['IPv4', 'IPv6', 'IPv4andIPv6'],
+                  help='PXE protocol (default: IPv4)')
+
     # local-access
     p = subparsers.add_parser('local-access', help='Toggle local iDRAC access')
     group = p.add_mutually_exclusive_group(required=True)
@@ -372,6 +411,61 @@ def handle_tpm_set_state(args):
 
 # Dell-Specific Handlers
 
+def handle_dell_get_boot_options(args):
+    """Handle 'redfish dell get-boot-options' command."""
+    rf = establish_redfish_connection(args)
+    nocache = getattr(args, 'no_cache', False)
+    boot_options = rf.manufacturer_class.get_boot_options(nocache=nocache)
+    return {
+        'boot_options': boot_options,
+        'count': len(boot_options)
+    }
+
+
+def handle_dell_get_nics(args):
+    """Handle 'redfish dell get-nics' command."""
+    rf = establish_redfish_connection(args)
+    interfaces = rf.manufacturer_class.get_network_interfaces()
+    return {
+        'network_interfaces': interfaces,
+        'count': len(interfaces)
+    }
+
+
+def handle_dell_get_nic_attrs(args):
+    """Handle 'redfish dell get-nic-attrs' command."""
+    rf = establish_redfish_connection(args)
+    result = rf.manufacturer_class.get_nic_attributes(args.mac)
+    return result
+
+
+def handle_dell_boot_first_by_mac(args):
+    """Handle 'redfish dell boot-first-by-mac' command."""
+    rf = establish_redfish_connection(args)
+    boot_type = getattr(args, 'type', None)
+    result = rf.manufacturer_class.set_boot_first_by_mac(args.mac, boot_type=boot_type)
+    return result
+
+
+def handle_dell_setup_pxe_boot(args):
+    """Handle 'redfish dell setup-pxe-boot' command."""
+    rf = establish_redfish_connection(args)
+    protocol = getattr(args, 'protocol', 'IPv4')
+    reboot = not getattr(args, 'no_reboot', False)
+    result = rf.manufacturer_class.setup_pxe_boot(
+        args.mac, protocol=protocol, reboot=reboot
+    )
+    return result
+
+
+def handle_dell_enable_pxe(args):
+    """Handle 'redfish dell enable-pxe' command."""
+    rf = establish_redfish_connection(args)
+    protocol = getattr(args, 'protocol', 'IPv4')
+    result = rf.manufacturer_class.enable_nic_pxe(args.mac, protocol=protocol)
+    return result
+
+
 def handle_dell_onetime_boot(args):
     """Handle 'redfish dell onetime-boot' command."""
     rf = establish_redfish_connection(args)
@@ -527,6 +621,12 @@ def dispatch_dell(args):
     """Dispatch Dell-specific command."""
     action = args.dell_action
     handlers = {
+        'get-boot-options': handle_dell_get_boot_options,
+        'get-nics': handle_dell_get_nics,
+        'get-nic-attrs': handle_dell_get_nic_attrs,
+        'boot-first-by-mac': handle_dell_boot_first_by_mac,
+        'setup-pxe-boot': handle_dell_setup_pxe_boot,
+        'enable-pxe': handle_dell_enable_pxe,
         'onetime-boot': handle_dell_onetime_boot,
         'create-role': handle_dell_create_role,
         'local-access': handle_dell_local_access,
@@ -559,6 +659,8 @@ def handle_alias(args, target):
         return wrap_command(handle_boot_get_order, args)
     elif target == 'redfish_boot_set_order':
         return wrap_command(handle_boot_set_order, args)
+    elif target == 'redfish_boot_list_options':
+        return wrap_command(handle_boot_list_options, args)
     else:
         print(f"Error: Unknown redfish alias: {target}", file=sys.stderr)
         return 1
