@@ -253,6 +253,112 @@ class DellFish:
             raise ValueError(f'Failed to set boot order, status code: {response.status_code}{error_detail}')
 
 
+    def set_boot_first_by_mac(self, mac_address: str, boot_type: str = None) -> dict:
+        """Move the boot option matching a MAC address to the front of the boot order.
+
+        Args:
+            mac_address: MAC address of the target NIC
+            boot_type: Optional boot option type filter (e.g., 'PXE')
+
+        Returns:
+            Dict with the new boot order and the promoted option
+
+        Raises:
+            ValueError: If no matching boot option or set fails
+        """
+        option = self.get_boot_option_by_mac(mac_address, type=boot_type)
+        boot_ref = option.get('BootOptionReference')
+        if not boot_ref:
+            raise ValueError(
+                f'Boot option for MAC {mac_address} has no BootOptionReference'
+            )
+
+        current_order = self.get_boot_order()
+
+        if boot_ref not in current_order:
+            raise ValueError(
+                f'{boot_ref} not found in current boot order: {current_order}'
+            )
+
+        # Move to front, keep the rest in existing order
+        new_order = [boot_ref] + [b for b in current_order if b != boot_ref]
+
+        self.set_boot_order(new_order)
+
+        return {
+            'promoted': boot_ref,
+            'display_name': option.get('DisplayName', ''),
+            'mac_address': mac_address,
+            'boot_order': new_order,
+            'message': f'{boot_ref} ({option.get("DisplayName", "")}) moved to front of boot order'
+        }
+
+    def setup_pxe_boot(self, mac_address: str, protocol: str = 'IPv4',
+                       reboot: bool = True) -> dict:
+        """Enable PXE boot on a NIC and set it first in boot order.
+
+        If the NIC already has a PXE boot option, just moves it to the
+        front of the boot order (no reboot needed). If PXE is not yet
+        enabled, stages the BIOS setting and optionally reboots to apply.
+
+        Args:
+            mac_address: MAC address of the target NIC
+            protocol: PXE protocol - 'IPv4', 'IPv6', or 'IPv4andIPv6'
+            reboot: If True and PXE needs enabling, reboot to apply
+
+        Returns:
+            Dict with action taken and details
+        """
+        # Verify the NIC exists
+        self._find_interface_by_mac(mac_address)
+
+        # Check if a PXE boot option already exists for this MAC
+        try:
+            option = self.get_boot_option_by_mac(mac_address, type='PXE')
+        except ValueError:
+            option = None
+
+        if option:
+            # PXE already enabled — just reorder
+            result = self.set_boot_first_by_mac(mac_address, boot_type='PXE')
+            result['pxe_already_enabled'] = True
+            result['boot_order_set'] = True
+            result['rebooted'] = False
+            return result
+
+        # PXE not enabled — stage BIOS setting
+        pxe_result = self.enable_nic_pxe(mac_address, protocol=protocol)
+
+        result = {
+            'pxe_already_enabled': False,
+            'boot_order_set': False,
+            'pxe_slot': pxe_result.get('pxe_slot'),
+            'nic_id': pxe_result.get('nic_id'),
+            'mac_address': mac_address,
+            'rebooted': False,
+        }
+
+        if reboot:
+            # Set one-time boot to PXE so it PXE boots after reboot
+            self.set_next_onetime_boot('Pxe')
+            self.reset_system('GracefulRestart')
+            result['rebooted'] = True
+            result['message'] = (
+                f'PXE enabled on {pxe_result.get("nic_id")} '
+                f'(PxeDev{pxe_result.get("pxe_slot")}). '
+                f'System is rebooting with one-time PXE boot. '
+                f'After reboot, run boot-first-by-mac to make permanent.'
+            )
+        else:
+            result['message'] = (
+                f'PXE enabled on {pxe_result.get("nic_id")} '
+                f'(PxeDev{pxe_result.get("pxe_slot")}). '
+                f'Reboot required to apply. Then run boot-first-by-mac '
+                f'to make permanent.'
+            )
+
+        return result
+
     def set_next_onetime_boot(self, boot_source: str) -> bool:
         """Set the next one-time boot source for the Dell system.
         
@@ -507,3 +613,200 @@ class DellFish:
             except Exception:
                 detail = resp.text
             raise ValueError(f'Failed to toggle local iDRAC access, status: {resp.status_code}, detail: {detail}')
+
+
+    def get_network_interfaces(self) -> list:
+        """Get NIC information including MAC addresses from the Dell system.
+
+        Queries the EthernetInterfaces collection under the system resource
+        and returns details for each interface.
+
+        Returns:
+            List of dicts, each containing interface details (Id, Name,
+            MACAddress, SpeedMbps, Status, etc.)
+
+        Raises:
+            ValueError: If the interfaces cannot be retrieved
+        """
+        response = self.api.get(f'/redfish/v1/Systems/{self.system_id}/EthernetInterfaces')
+        if response.status_code != 200:
+            raise ValueError(f'Failed to retrieve EthernetInterfaces, status code: {response.status_code}')
+
+        data = response.json()
+        members = data.get('Members', [])
+        interfaces = []
+        for member in members:
+            iface_resp = self.api.get(member['@odata.id'])
+            if iface_resp.status_code == 200:
+                interfaces.append(iface_resp.json())
+
+        return interfaces
+
+
+    def _find_interface_by_mac(self, mac_address: str) -> dict:
+        """Find an EthernetInterface by MAC address.
+
+        Args:
+            mac_address: MAC address (e.g., '04:32:01:D8:C0:B0')
+
+        Returns:
+            The matching interface dict
+
+        Raises:
+            ValueError: If no interface matches
+        """
+        interfaces = self.get_network_interfaces()
+        target_mac = mac_address.replace(':', '').replace('-', '').upper()
+
+        for iface in interfaces:
+            iface_mac = (iface.get('MACAddress') or '').replace(':', '').replace('-', '').upper()
+            if iface_mac == target_mac:
+                return iface
+
+        raise ValueError(f'No NIC found with MAC address: {mac_address}')
+
+    def _get_nic_oem_attrs_path(self, iface: dict) -> str:
+        """Build the DellNetworkAttributes path for an EthernetInterface.
+
+        Args:
+            iface: EthernetInterface dict (must contain 'Id' and 'Links')
+
+        Returns:
+            The OEM DellNetworkAttributes endpoint path
+        """
+        nic_id = iface['Id']
+
+        chassis_id = 'System.Embedded.1'
+        chassis_link = iface.get('Links', {}).get('Chassis', {}).get('@odata.id', '')
+        if chassis_link:
+            chassis_id = chassis_link.split('/')[-1]
+
+        adapter_id = nic_id.split('-')[0]
+
+        return (
+            f'/redfish/v1/Chassis/{chassis_id}/NetworkAdapters/{adapter_id}'
+            f'/NetworkDeviceFunctions/{nic_id}'
+            f'/Oem/Dell/DellNetworkAttributes/{nic_id}'
+        )
+
+    def get_nic_attributes(self, mac_address: str) -> dict:
+        """Get Dell OEM network attributes for a NIC by MAC address.
+
+        Args:
+            mac_address: MAC address (e.g., '04:32:01:D8:C0:B0')
+
+        Returns:
+            Dict with nic_id and the OEM attributes
+
+        Raises:
+            ValueError: If the NIC or attributes cannot be retrieved
+        """
+        iface = self._find_interface_by_mac(mac_address)
+        attrs_path = self._get_nic_oem_attrs_path(iface)
+
+        response = self.api.get(attrs_path)
+        if response.status_code != 200:
+            raise ValueError(
+                f'Failed to get attributes for {iface["Id"]}, '
+                f'status: {response.status_code}'
+            )
+
+        data = response.json()
+        return {
+            'nic_id': iface['Id'],
+            'mac_address': mac_address,
+            'attributes': data.get('Attributes', {})
+        }
+
+    def _get_bios_attributes(self) -> dict:
+        """Get current BIOS attributes.
+
+        Returns:
+            Dict of BIOS attribute name -> value
+
+        Raises:
+            ValueError: If BIOS attributes cannot be retrieved
+        """
+        response = self.api.get(f'/redfish/v1/Systems/{self.system_id}/Bios')
+        if response.status_code != 200:
+            raise ValueError(f'Failed to get BIOS attributes, status: {response.status_code}')
+        return response.json().get('Attributes', {})
+
+    def enable_nic_pxe(self, mac_address: str, protocol: str = 'IPv4') -> dict:
+        """Enable PXE boot on a NIC identified by MAC address.
+
+        Finds the NIC, then configures a PxeDev slot in the BIOS Settings
+        to enable PXE boot on that interface. Uses PxeDev1-4 slots.
+
+        Args:
+            mac_address: MAC address (e.g., '04:32:01:D8:C0:B0')
+            protocol: PXE protocol - 'IPv4', 'IPv6', or 'IPv4andIPv6'
+
+        Returns:
+            Dict with nic_id, pxe_slot, and result message
+
+        Raises:
+            ValueError: If the NIC cannot be found, no free PXE slot, or PATCH fails
+        """
+        iface = self._find_interface_by_mac(mac_address)
+        nic_id = iface['Id']
+
+        # Read current BIOS attributes to find PxeDev slots
+        bios_attrs = self._get_bios_attributes()
+
+        # Check PxeDev1 through PxeDev4 for an existing or free slot
+        target_slot = None
+        for i in range(1, 5):
+            en_key = f'PxeDev{i}EnDis'
+            iface_key = f'PxeDev{i}Interface'
+
+            # Skip if the BIOS doesn't have these attributes at all
+            if en_key not in bios_attrs:
+                continue
+
+            current_iface = bios_attrs.get(iface_key, '')
+            enabled = bios_attrs.get(en_key, 'Disabled')
+
+            # Already assigned to this NIC
+            if current_iface == nic_id:
+                target_slot = i
+                break
+
+            # First free (disabled) slot
+            if target_slot is None and enabled == 'Disabled':
+                target_slot = i
+
+        if target_slot is None:
+            raise ValueError(
+                'No available PxeDev slot (1-4). All slots are in use.'
+            )
+
+        payload = {
+            "Attributes": {
+                f"PxeDev{target_slot}EnDis": "Enabled",
+                f"PxeDev{target_slot}Interface": nic_id,
+                f"PxeDev{target_slot}Protocol": protocol,
+            }
+        }
+
+        settings_path = f'/redfish/v1/Systems/{self.system_id}/Bios/Settings'
+        response = self.api.patch(settings_path, data=payload)
+        if response.status_code in [200, 202, 204]:
+            return {
+                'nic_id': nic_id,
+                'mac_address': mac_address,
+                'pxe_slot': target_slot,
+                'message': (
+                    f'PXE boot enabled on {nic_id} (PxeDev{target_slot}). '
+                    f'A system reboot is required to apply.'
+                )
+            }
+        else:
+            detail = ''
+            try:
+                detail = json.dumps(response.json(), indent=2)
+            except Exception:
+                detail = response.text
+            raise ValueError(
+                f'Failed to enable PXE on {nic_id}, status: {response.status_code}, detail: {detail}'
+            )

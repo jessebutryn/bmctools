@@ -167,6 +167,13 @@ def setup_aliases(subparsers):
                       help='File containing boot order (one entry per line)')
     alias.set_defaults(alias_target='redfish_boot_set_order')
 
+    # get_boot_options alias
+    alias = subparsers.add_parser('get_boot_options',
+                                   help='Get boot options (alias for: redfish boot list-options)')
+    alias.add_argument('--no-cache', action='store_true',
+                      help='Force fresh query (bypass cache)')
+    alias.set_defaults(alias_target='redfish_boot_list_options')
+
 
 def dispatch_alias(args):
     """Dispatch aliased command to its target handler.
