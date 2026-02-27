@@ -174,6 +174,49 @@ def setup_aliases(subparsers):
                       help='Force fresh query (bypass cache)')
     alias.set_defaults(alias_target='redfish_boot_list_options')
 
+    # enable_pxe alias
+    alias = subparsers.add_parser('enable_pxe',
+                                   help='Enable PXE boot on a NIC by MAC (alias for: redfish dell enable-pxe)')
+    alias.add_argument('-m', '--mac', required=True,
+                      help='MAC address of the NIC (e.g., 04:32:01:D8:C0:B0)')
+    alias.add_argument('--protocol', default='IPv4',
+                      choices=['IPv4', 'IPv6', 'IPv4andIPv6'],
+                      help='PXE protocol (default: IPv4)')
+    alias.set_defaults(alias_target='redfish_dell_enable_pxe')
+
+    # setup_pxe_boot alias
+    alias = subparsers.add_parser('setup_pxe_boot',
+                                   help='Enable PXE and set boot order (alias for: redfish dell setup-pxe-boot)')
+    alias.add_argument('-m', '--mac', required=True,
+                      help='MAC address of the NIC')
+    alias.add_argument('--protocol', default='IPv4',
+                      choices=['IPv4', 'IPv6', 'IPv4andIPv6'],
+                      help='PXE protocol (default: IPv4)')
+    alias.add_argument('--no-reboot', action='store_true',
+                      help='Do not reboot if PXE needs enabling (stage only)')
+    alias.set_defaults(alias_target='redfish_dell_setup_pxe_boot')
+
+    # get_nics alias
+    alias = subparsers.add_parser('get_nics',
+                                   help='Get NIC info and MAC addresses (alias for: redfish dell get-nics)')
+    alias.set_defaults(alias_target='redfish_dell_get_nics')
+
+    # check_pxe alias
+    alias = subparsers.add_parser('check_pxe',
+                                   help='Check PXE status for a NIC (alias for: redfish dell check-pxe)')
+    alias.add_argument('-m', '--mac', required=True,
+                      help='MAC address of the NIC (e.g., 04:32:01:D8:C0:B0)')
+    alias.set_defaults(alias_target='redfish_dell_check_pxe')
+
+    # boot_first_by_mac alias
+    alias = subparsers.add_parser('boot_first_by_mac',
+                                   help='Move NIC to front of boot order (alias for: redfish dell boot-first-by-mac)')
+    alias.add_argument('-m', '--mac', required=True,
+                      help='MAC address of the NIC')
+    alias.add_argument('--type',
+                      help='Boot option type filter (e.g., PXE)')
+    alias.set_defaults(alias_target='redfish_dell_boot_first_by_mac')
+
 
 def dispatch_alias(args):
     """Dispatch aliased command to its target handler.
