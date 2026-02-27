@@ -732,6 +732,59 @@ class DellFish:
             raise ValueError(f'Failed to get BIOS attributes, status: {response.status_code}')
         return response.json().get('Attributes', {})
 
+    def check_pxe_status(self, mac_address: str) -> dict:
+        """Check whether PXE is enabled for a NIC identified by MAC address.
+
+        Checks two things:
+        1. Whether a PXE boot option exists in BootOptions for this MAC
+        2. Whether a PxeDev BIOS slot is configured for this NIC
+
+        Args:
+            mac_address: MAC address (e.g., '04:32:01:D8:C0:B0')
+
+        Returns:
+            Dict with pxe_boot_option_exists, pxe_bios_slot_configured, and details
+        """
+        iface = self._find_interface_by_mac(mac_address)
+        nic_id = iface['Id']
+
+        # Check if a PXE boot option exists
+        try:
+            option = self.get_boot_option_by_mac(mac_address, type='PXE')
+            pxe_option = {
+                'exists': True,
+                'boot_option_reference': option.get('BootOptionReference'),
+                'display_name': option.get('DisplayName', ''),
+            }
+        except ValueError:
+            pxe_option = {'exists': False}
+
+        # Check BIOS PxeDev slots
+        bios_attrs = self._get_bios_attributes()
+        bios_slot = None
+        for i in range(1, 5):
+            en_key = f'PxeDev{i}EnDis'
+            iface_key = f'PxeDev{i}Interface'
+            proto_key = f'PxeDev{i}Protocol'
+            if en_key not in bios_attrs:
+                continue
+            if bios_attrs.get(iface_key) == nic_id:
+                bios_slot = {
+                    'slot': i,
+                    'enabled': bios_attrs.get(en_key, 'Disabled') == 'Enabled',
+                    'interface': bios_attrs.get(iface_key, ''),
+                    'protocol': bios_attrs.get(proto_key, ''),
+                }
+                break
+
+        return {
+            'mac_address': mac_address,
+            'nic_id': nic_id,
+            'pxe_boot_option': pxe_option,
+            'pxe_bios_slot': bios_slot,
+            'pxe_ready': pxe_option.get('exists', False),
+        }
+
     def enable_nic_pxe(self, mac_address: str, protocol: str = 'IPv4') -> dict:
         """Enable PXE boot on a NIC identified by MAC address.
 

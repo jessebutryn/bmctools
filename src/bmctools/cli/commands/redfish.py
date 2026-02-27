@@ -193,6 +193,11 @@ def setup_dell_commands(parser):
                   choices=['IPv4', 'IPv6', 'IPv4andIPv6'],
                   help='PXE protocol (default: IPv4)')
 
+    # check-pxe
+    p = subparsers.add_parser('check-pxe', help='Check if PXE is enabled for a NIC by MAC address')
+    p.add_argument('-m', '--mac', required=True,
+                  help='MAC address of the NIC (e.g., 04:32:01:D8:C0:B0)')
+
     # local-access
     p = subparsers.add_parser('local-access', help='Toggle local iDRAC access')
     group = p.add_mutually_exclusive_group(required=True)
@@ -466,6 +471,13 @@ def handle_dell_enable_pxe(args):
     return result
 
 
+def handle_dell_check_pxe(args):
+    """Handle 'redfish dell check-pxe' command."""
+    rf = establish_redfish_connection(args)
+    result = rf.manufacturer_class.check_pxe_status(args.mac)
+    return result
+
+
 def handle_dell_onetime_boot(args):
     """Handle 'redfish dell onetime-boot' command."""
     rf = establish_redfish_connection(args)
@@ -627,6 +639,7 @@ def dispatch_dell(args):
         'boot-first-by-mac': handle_dell_boot_first_by_mac,
         'setup-pxe-boot': handle_dell_setup_pxe_boot,
         'enable-pxe': handle_dell_enable_pxe,
+        'check-pxe': handle_dell_check_pxe,
         'onetime-boot': handle_dell_onetime_boot,
         'create-role': handle_dell_create_role,
         'local-access': handle_dell_local_access,
@@ -661,6 +674,16 @@ def handle_alias(args, target):
         return wrap_command(handle_boot_set_order, args)
     elif target == 'redfish_boot_list_options':
         return wrap_command(handle_boot_list_options, args)
+    elif target == 'redfish_dell_enable_pxe':
+        return wrap_command(handle_dell_enable_pxe, args)
+    elif target == 'redfish_dell_setup_pxe_boot':
+        return wrap_command(handle_dell_setup_pxe_boot, args)
+    elif target == 'redfish_dell_get_nics':
+        return wrap_command(handle_dell_get_nics, args)
+    elif target == 'redfish_dell_boot_first_by_mac':
+        return wrap_command(handle_dell_boot_first_by_mac, args)
+    elif target == 'redfish_dell_check_pxe':
+        return wrap_command(handle_dell_check_pxe, args)
     else:
         print(f"Error: Unknown redfish alias: {target}", file=sys.stderr)
         return 1
