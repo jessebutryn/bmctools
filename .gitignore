@@ -145,3 +145,5 @@ test.py
 #pyenv
 bin/
 pyvenv.cfg
+
+.bmctools/
