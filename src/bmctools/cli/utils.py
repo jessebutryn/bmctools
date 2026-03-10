@@ -295,7 +295,7 @@ def establish_ipmi_connection(args):
 
     ipmi = IpmiTool(
         host=args.ip,
-        username=args.username,
+        user=args.username,
         password=args.password
     )
 
