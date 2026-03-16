@@ -198,8 +198,8 @@ def setup_aliases(subparsers):
 
     # get_nics alias
     alias = subparsers.add_parser('get_nics',
-                                   help='Get NIC info and MAC addresses (alias for: redfish dell get-nics)')
-    alias.set_defaults(alias_target='redfish_dell_get_nics')
+                                   help='Get NIC info and MAC addresses')
+    alias.set_defaults(alias_target='redfish_get_nics')
 
     # check_pxe alias
     alias = subparsers.add_parser('check_pxe',

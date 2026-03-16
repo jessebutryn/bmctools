@@ -452,6 +452,34 @@ class AsusFish:
             raise ValueError(f'Failed to update BIOS firmware, status code: {response.status_code}{error_detail}')
 
 
+    def get_network_interfaces(self) -> list:
+        """Get NIC information including MAC addresses from the system.
+
+        Queries the EthernetInterfaces collection under /redfish/v1/Systems/Self
+        and returns details for each interface.
+
+        Returns:
+            List of dicts, each containing interface details (Id, Name,
+            MACAddress, SpeedMbps, Status, etc.)
+
+        Raises:
+            ValueError: If the interfaces cannot be retrieved
+        """
+        response = self.api.get('/redfish/v1/Systems/Self/EthernetInterfaces')
+        if response.status_code != 200:
+            raise ValueError(f'Failed to retrieve EthernetInterfaces, status code: {response.status_code}')
+
+        data = response.json()
+        members = data.get('Members', [])
+        interfaces = []
+        for member in members:
+            iface_resp = self.api.get(member['@odata.id'])
+            if iface_resp.status_code == 200:
+                interfaces.append(iface_resp.json())
+
+        return interfaces
+
+
     def set_trusted_module_state(self, state: str = "Disabled") -> bool:
         """
         Set the TrustedModules State (e.g., "Enabled" or "Disabled") at /redfish/v1/Systems/Self.
