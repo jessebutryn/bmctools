@@ -212,6 +212,24 @@ class Redfish:
             raise NotImplementedError(f'BMC firmware update not implemented for manufacturer: {self.manufacturer}')
 
 
+    def get_network_interfaces(self) -> list:
+        """Get NIC / EthernetInterface information.
+
+        Returns:
+            List of interface dicts
+
+        Raises:
+            NotImplementedError: If not implemented for the manufacturer
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.get_network_interfaces()
+        except AttributeError:
+            raise NotImplementedError(f'get_network_interfaces not implemented for manufacturer: {self.manufacturer}')
+
+
     def update_bios_firmware(self, firmware_path: str) -> dict:
         """Update BIOS firmware.
 

@@ -615,6 +615,61 @@ class DellFish:
             raise ValueError(f'Failed to toggle local iDRAC access, status: {resp.status_code}, detail: {detail}')
 
 
+    def _create_dell_bios_job(self, target_settings_uri: str) -> str:
+        """Create a Dell OEM BIOS job to apply staged BIOS attributes on reboot.
+
+        Returns the job URI (e.g. '/redfish/v1/Managers/iDRAC.Embedded.1/Oem/Dell/Jobs/JID_...')
+        or raises ValueError on failure.
+        """
+        # Find manager id
+        mgr_resp = self.api.get('/redfish/v1/Managers')
+        if mgr_resp.status_code != 200:
+            raise ValueError(f'Failed to list Managers, status code: {mgr_resp.status_code}')
+
+        mgr_data = mgr_resp.json()
+        members = mgr_data.get('Members', [])
+        if not members:
+            raise ValueError('No Managers found')
+
+        mgr_odata = members[0].get('@odata.id', '')
+        mgr_id = mgr_odata.split('/')[-1] if mgr_odata else 'iDRAC.Embedded.1'
+
+        jobs_path = f'/redfish/v1/Managers/{mgr_id}/Oem/Dell/Jobs'
+
+        payload = {
+            'JobType': 'BIOSConfiguration',
+            'TargetSettingsURI': target_settings_uri
+        }
+
+        resp = self.api.post(jobs_path, data=payload)
+        # Accept 200/201/202 for creation
+        if resp.status_code in [200, 201, 202]:
+            # Try to return the job URI from Location header or response body
+            loc = resp.headers.get('Location') if hasattr(resp, 'headers') else None
+            if loc:
+                return loc
+            try:
+                body = resp.json()
+                if isinstance(body, dict):
+                    if body.get('@odata.id'):
+                        return body.get('@odata.id')
+                    # Some responses include Id field; attempt to construct
+                    jid = body.get('Id')
+                    if jid:
+                        return f'/redfish/v1/Managers/{mgr_id}/Oem/Dell/Jobs/{jid}'
+            except Exception:
+                pass
+            # Fallback: return the collection path to indicate submission
+            return jobs_path
+        else:
+            detail = ''
+            try:
+                detail = json.dumps(resp.json(), indent=2)
+            except Exception:
+                detail = getattr(resp, 'text', str(resp))
+            raise ValueError(f'Failed to create Dell BIOS job, status: {resp.status_code}, detail: {detail}')
+
+
     def get_network_interfaces(self) -> list:
         """Get NIC information including MAC addresses from the Dell system.
 
@@ -845,7 +900,7 @@ class DellFish:
         settings_path = f'/redfish/v1/Systems/{self.system_id}/Bios/Settings'
         response = self.api.patch(settings_path, data=payload)
         if response.status_code in [200, 202, 204]:
-            return {
+            result = {
                 'nic_id': nic_id,
                 'mac_address': mac_address,
                 'pxe_slot': target_slot,
@@ -854,6 +909,17 @@ class DellFish:
                     f'A system reboot is required to apply.'
                 )
             }
+
+            # Attempt to create a Dell OEM BIOS job so the staged BIOS
+            # attributes are applied on the next reboot. If job creation
+            # fails, return the staged result but include the error.
+            try:
+                job_uri = self._create_dell_bios_job(settings_path)
+                result['job_uri'] = job_uri
+            except Exception as e:
+                result['job_creation_error'] = str(e)
+
+            return result
         else:
             detail = ''
             try:

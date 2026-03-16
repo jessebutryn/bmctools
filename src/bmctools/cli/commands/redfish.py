@@ -427,14 +427,15 @@ def handle_dell_get_boot_options(args):
     }
 
 
-def handle_dell_get_nics(args):
-    """Handle 'redfish dell get-nics' command."""
+def handle_get_nics(args):
+    """Handle 'get_nics' command (manufacturer-agnostic)."""
     rf = establish_redfish_connection(args)
-    interfaces = rf.manufacturer_class.get_network_interfaces()
+    interfaces = rf.get_network_interfaces()
     return {
         'network_interfaces': interfaces,
         'count': len(interfaces)
     }
+
 
 
 def handle_dell_get_nic_attrs(args):
@@ -634,7 +635,7 @@ def dispatch_dell(args):
     action = args.dell_action
     handlers = {
         'get-boot-options': handle_dell_get_boot_options,
-        'get-nics': handle_dell_get_nics,
+        'get-nics': handle_get_nics,
         'get-nic-attrs': handle_dell_get_nic_attrs,
         'boot-first-by-mac': handle_dell_boot_first_by_mac,
         'setup-pxe-boot': handle_dell_setup_pxe_boot,
@@ -678,8 +679,10 @@ def handle_alias(args, target):
         return wrap_command(handle_dell_enable_pxe, args)
     elif target == 'redfish_dell_setup_pxe_boot':
         return wrap_command(handle_dell_setup_pxe_boot, args)
+    elif target == 'redfish_get_nics':
+        return wrap_command(handle_get_nics, args)
     elif target == 'redfish_dell_get_nics':
-        return wrap_command(handle_dell_get_nics, args)
+        return wrap_command(handle_get_nics, args)
     elif target == 'redfish_dell_boot_first_by_mac':
         return wrap_command(handle_dell_boot_first_by_mac, args)
     elif target == 'redfish_dell_check_pxe':
