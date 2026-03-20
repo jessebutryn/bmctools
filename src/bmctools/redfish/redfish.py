@@ -60,6 +60,12 @@ class Redfish:
         if manufacturer in ['dell', 'dell inc.']:
             from bmctools.redfish.dellfish import DellFish
             return DellFish(self.api)
+        if manufacturer in ['gigabyte', 'giga computing']:
+            from bmctools.redfish.gigafish import GigaFish
+            return GigaFish(self.api)
+        if manufacturer in ['cisco', 'cisco systems inc', 'cisco systems inc.']:
+            from bmctools.redfish.ciscofish import CiscoFish
+            return CiscoFish(self.api)
         else:
             return None
         
@@ -228,6 +234,150 @@ class Redfish:
             return self.manufacturer_class.get_network_interfaces()
         except AttributeError:
             raise NotImplementedError(f'get_network_interfaces not implemented for manufacturer: {self.manufacturer}')
+
+
+    # ── Boot Source Override (standard Redfish, all manufacturers) ────
+
+    def get_boot_override(self) -> dict:
+        """Get the current boot source override configuration.
+
+        This is standard Redfish and works on all manufacturers.
+
+        Returns:
+            Dict with current override target, enabled state, and allowable values.
+        """
+        # Delegate to manufacturer class if it has a custom implementation
+        if self.manufacturer_class and hasattr(self.manufacturer_class, 'get_boot_override'):
+            return self.manufacturer_class.get_boot_override()
+
+        response = self.api.get(f'/redfish/v1/Systems/{self.system_id}')
+        if response.status_code == 200:
+            data = response.json()
+            boot = data.get('Boot', {})
+            return {
+                'override_target': boot.get('BootSourceOverrideTarget', 'None'),
+                'override_enabled': boot.get('BootSourceOverrideEnabled', 'Disabled'),
+                'allowable_targets': boot.get('BootSourceOverrideTarget@Redfish.AllowableValues', []),
+                'allowable_modes': boot.get('BootSourceOverrideEnabled@Redfish.AllowableValues', []),
+            }
+        else:
+            raise ValueError(f'Failed to get system info, status code: {response.status_code}')
+
+
+    def set_boot_override(self, target: str, enabled: str = 'Once') -> bool:
+        """Set boot source override to boot from a specific device type.
+
+        This is standard Redfish and works on all manufacturers.
+
+        Args:
+            target: Boot source target (e.g., 'Pxe', 'Hdd', 'Cd', 'BiosSetup', 'None')
+            enabled: Override mode: 'Once', 'Continuous', or 'Disabled'
+
+        Returns:
+            True if successful.
+        """
+        if self.manufacturer_class and hasattr(self.manufacturer_class, 'set_boot_override'):
+            return self.manufacturer_class.set_boot_override(target, enabled)
+
+        payload = {
+            "Boot": {
+                "BootSourceOverrideTarget": target,
+                "BootSourceOverrideEnabled": enabled,
+            }
+        }
+
+        response = self.api.patch(f'/redfish/v1/Systems/{self.system_id}', data=payload)
+        if response.status_code in [200, 204]:
+            return True
+        else:
+            error_detail = ""
+            try:
+                import json
+                error_data = response.json()
+                error_detail = f"\nError details: {json.dumps(error_data, indent=2)}"
+            except:
+                error_detail = f"\nResponse text: {response.text}"
+            raise ValueError(f'Failed to set boot override, status code: {response.status_code}{error_detail}')
+
+
+    # ── BIOS Settings (standard Redfish, all manufacturers) ───────────
+
+    def get_bios_settings(self) -> dict:
+        """Get current BIOS settings/attributes.
+
+        Returns:
+            Dict with BIOS attributes, id, and description.
+        """
+        if self.manufacturer_class and hasattr(self.manufacturer_class, 'get_bios_settings'):
+            return self.manufacturer_class.get_bios_settings()
+
+        response = self.api.get(f'/redfish/v1/Systems/{self.system_id}/Bios')
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                'attributes': data.get('Attributes', {}),
+                'id': data.get('Id'),
+                'description': data.get('Description'),
+            }
+        else:
+            raise ValueError(f'Failed to get BIOS settings, status code: {response.status_code}')
+
+
+    def get_boot_bios_settings(self) -> dict:
+        """Get only boot-related BIOS token settings.
+
+        Filters BIOS attributes to those containing common boot-related keywords.
+
+        Returns:
+            Dict of boot-related BIOS attributes.
+        """
+        if self.manufacturer_class and hasattr(self.manufacturer_class, 'get_boot_bios_settings'):
+            return self.manufacturer_class.get_boot_bios_settings()
+
+        bios = self.get_bios_settings()
+        attributes = bios.get('attributes', {})
+
+        boot_keywords = ['boot', 'pxe', 'uefi', 'network', 'efi', 'legacy', 'ipv4', 'ipv6']
+        boot_attrs = {}
+        for key, value in attributes.items():
+            if any(kw in key.lower() for kw in boot_keywords):
+                boot_attrs[key] = value
+
+        return boot_attrs
+
+
+    def set_bios_settings(self, attributes: dict) -> bool:
+        """Set BIOS attributes (typically applied on next reboot).
+
+        Most vendors use /Bios/Settings for pending BIOS changes.
+
+        Args:
+            attributes: Dict of BIOS attribute key/value pairs to set.
+
+        Returns:
+            True if the settings were accepted.
+        """
+        if self.manufacturer_class and hasattr(self.manufacturer_class, 'set_bios_settings'):
+            return self.manufacturer_class.set_bios_settings(attributes)
+
+        import json
+        settings_uri = f'/redfish/v1/Systems/{self.system_id}/Bios/Settings'
+
+        payload = {
+            "Attributes": attributes
+        }
+
+        response = self.api.patch(settings_uri, data=payload)
+        if response.status_code in [200, 202, 204]:
+            return True
+        else:
+            error_detail = ""
+            try:
+                error_data = response.json()
+                error_detail = f"\nError details: {json.dumps(error_data, indent=2)}"
+            except:
+                error_detail = f"\nResponse text: {response.text}"
+            raise ValueError(f'Failed to set BIOS settings, status code: {response.status_code}{error_detail}')
 
 
     def update_bios_firmware(self, firmware_path: str) -> dict:

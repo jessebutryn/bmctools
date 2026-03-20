@@ -41,6 +41,14 @@ def setup_redfish_commands(parser):
     tpm_parser = subparsers.add_parser('tpm', help='TPM management (ASUS)')
     setup_tpm_commands(tpm_parser)
 
+    # BIOS settings commands
+    bios_parser = subparsers.add_parser('bios', help='BIOS settings management')
+    setup_bios_commands(bios_parser)
+
+    # Raw Redfish API access
+    raw_parser = subparsers.add_parser('raw', help='Raw Redfish API request')
+    raw_parser.add_argument('uri', help='Redfish URI path (e.g., /redfish/v1/Systems)')
+
     # Dell-specific commands
     dell_parser = subparsers.add_parser('dell', help='Dell-specific commands')
     setup_dell_commands(dell_parser)
@@ -86,6 +94,17 @@ def setup_boot_commands(parser):
 
     # get-pending
     subparsers.add_parser('get-pending', help='Get pending boot order (ASUS FutureState)')
+
+    # get-override
+    subparsers.add_parser('get-override', help='Get current boot source override configuration')
+
+    # set-override
+    p = subparsers.add_parser('set-override', help='Set boot source override (e.g., PXE once)')
+    p.add_argument('-t', '--target', required=True,
+                  help='Boot source target (e.g., Pxe, Hdd, Cd, BiosSetup, Diags, None)')
+    p.add_argument('--mode', default='Once',
+                  choices=['Once', 'Continuous', 'Disabled'],
+                  help='Override mode (default: Once)')
 
 
 def setup_firmware_commands(parser):
@@ -136,6 +155,23 @@ def setup_tpm_commands(parser):
     p.add_argument('--state', required=True,
                   choices=['Enabled', 'Disabled'],
                   help='TPM state')
+
+
+def setup_bios_commands(parser):
+    """Setup BIOS settings subcommands."""
+    subparsers = parser.add_subparsers(dest='bios_action', help='BIOS action')
+
+    # get
+    subparsers.add_parser('get', help='Get all BIOS settings/attributes')
+
+    # get-boot
+    subparsers.add_parser('get-boot', help='Get boot-related BIOS settings only')
+
+    # set
+    p = subparsers.add_parser('set', help='Set BIOS attributes (applied on next reboot)')
+    p.add_argument('-a', '--attrs', required=True,
+                  help='BIOS attributes as key=value pairs, comma-separated '
+                       '(e.g., "IPV4PXE=Enabled,IPV6PXE=Disabled")')
 
 
 def setup_dell_commands(parser):
@@ -310,6 +346,64 @@ def handle_boot_get_pending(args):
     }
 
 
+def handle_boot_get_override(args):
+    """Handle 'redfish boot get-override' command."""
+    rf = establish_redfish_connection(args)
+    return rf.get_boot_override()
+
+
+def handle_boot_set_override(args):
+    """Handle 'redfish boot set-override' command."""
+    rf = establish_redfish_connection(args)
+
+    print_verbose(f"Setting boot override: target={args.target}, mode={args.mode}...", args)
+
+    rf.set_boot_override(args.target, enabled=args.mode)
+
+    return {
+        'message': f'Boot override set to {args.target} ({args.mode})',
+        'override_target': args.target,
+        'override_enabled': args.mode,
+    }
+
+
+# BIOS Settings Handlers
+
+def handle_bios_get(args):
+    """Handle 'redfish bios get' command."""
+    rf = establish_redfish_connection(args)
+    return rf.get_bios_settings()
+
+
+def handle_bios_get_boot(args):
+    """Handle 'redfish bios get-boot' command."""
+    rf = establish_redfish_connection(args)
+    return rf.get_boot_bios_settings()
+
+
+def handle_bios_set(args):
+    """Handle 'redfish bios set' command."""
+    rf = establish_redfish_connection(args)
+
+    # Parse key=value pairs from comma-separated string
+    attributes = {}
+    for pair in args.attrs.split(','):
+        pair = pair.strip()
+        if '=' not in pair:
+            raise ValueError(f'Invalid attribute format: "{pair}". Expected key=value')
+        key, value = pair.split('=', 1)
+        attributes[key.strip()] = value.strip()
+
+    print_verbose(f"Setting BIOS attributes: {attributes}...", args)
+
+    rf.set_bios_settings(attributes)
+
+    return {
+        'message': 'BIOS settings updated (will apply on next reboot)',
+        'attributes': attributes,
+    }
+
+
 # Firmware Management Handlers
 
 def handle_firmware_inventory(args):
@@ -412,6 +506,18 @@ def handle_tpm_set_state(args):
     return {
         'message': f'TPM state set to {args.state} successfully'
     }
+
+
+# Raw API Handler
+
+def handle_raw(args):
+    """Handle 'redfish raw' command — raw GET against any Redfish URI."""
+    rf = establish_redfish_connection(args)
+    response = rf.api.get(args.uri)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise ValueError(f'GET {args.uri} failed, status code: {response.status_code}\n{response.text}')
 
 
 # Dell-Specific Handlers
@@ -557,6 +663,10 @@ def dispatch(args):
         return dispatch_system(args)
     elif group == 'tpm':
         return dispatch_tpm(args)
+    elif group == 'bios':
+        return dispatch_bios(args)
+    elif group == 'raw':
+        return wrap_command(handle_raw, args)
     elif group == 'dell':
         return dispatch_dell(args)
     else:
@@ -574,6 +684,8 @@ def dispatch_boot(args):
         'find-by-mac': handle_boot_find_by_mac,
         'find-by-alias': handle_boot_find_by_alias,
         'get-pending': handle_boot_get_pending,
+        'get-override': handle_boot_get_override,
+        'set-override': handle_boot_set_override,
     }
 
     if action in handlers:
@@ -627,6 +739,22 @@ def dispatch_tpm(args):
         return wrap_command(handlers[action], args)
     else:
         print(f"Error: Unknown TPM action: {action}", file=sys.stderr)
+        return 1
+
+
+def dispatch_bios(args):
+    """Dispatch BIOS settings command."""
+    action = args.bios_action
+    handlers = {
+        'get': handle_bios_get,
+        'get-boot': handle_bios_get_boot,
+        'set': handle_bios_set,
+    }
+
+    if action in handlers:
+        return wrap_command(handlers[action], args)
+    else:
+        print(f"Error: Unknown BIOS action: {action}", file=sys.stderr)
         return 1
 
 
@@ -687,6 +815,16 @@ def handle_alias(args, target):
         return wrap_command(handle_dell_boot_first_by_mac, args)
     elif target == 'redfish_dell_check_pxe':
         return wrap_command(handle_dell_check_pxe, args)
+    elif target == 'redfish_boot_set_override':
+        return wrap_command(handle_boot_set_override, args)
+    elif target == 'redfish_boot_get_override':
+        return wrap_command(handle_boot_get_override, args)
+    elif target == 'redfish_bios_get':
+        return wrap_command(handle_bios_get, args)
+    elif target == 'redfish_bios_get_boot':
+        return wrap_command(handle_bios_get_boot, args)
+    elif target == 'redfish_bios_set':
+        return wrap_command(handle_bios_set, args)
     else:
         print(f"Error: Unknown redfish alias: {target}", file=sys.stderr)
         return 1
