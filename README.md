@@ -10,6 +10,8 @@ A Python library and CLI for managing Baseboard Management Controllers (BMCs) ac
   - **Dell iDRAC**: Full boot management, PXE setup, NIC discovery, user roles, local access control
   - **ASUS**: Boot order staging via FutureState endpoint, TPM management, firmware updates
   - **Supermicro**: Boot order and boot option queries
+  - **Gigabyte (GIGA Computing)**: Boot management with ETag support, NIC discovery, boot-first-by-MAC
+  - **Cisco (CIMC/UCS)**: Boot management, NIC discovery, boot-first-by-MAC
 - **Boot Management**: Get/set boot order, list boot options, search by MAC address or alias
 - **PXE Automation**: Enable PXE on a NIC by MAC address, set boot order, and reboot - all in one command
 - **Firmware Updates**: Upload BIOS and BMC firmware via Redfish
@@ -86,8 +88,9 @@ rf.set_boot_order(["Boot0003", "Boot0001", "Boot0000", "Boot0002"])
 | `-i, --ip, --host` | `BMC_HOST` | BMC IP address or hostname |
 | `-u, --username` | `BMC_USERNAME` | BMC username |
 | `-p, --password` | `BMC_PASSWORD` | BMC password |
-| `-m, --manufacturer` | `BMC_MANUFACTURER` | Force manufacturer: `asus`, `dell`, `supermicro` |
-| `-k, --insecure` | `BMC_INSECURE` | Disable SSL verification |
+| `-m, --manufacturer` | `BMC_MANUFACTURER` | Force manufacturer: `asus`, `dell`, `supermicro`, `gigabyte`, `cisco` |
+| `-k, --insecure` | `BMC_INSECURE` | Disable SSL verification (default: enabled) |
+| `--secure` | | Enable SSL verification (overrides `-k`) |
 | `-o, --output` | | Output format: `json`, `json-pretty`, `table`, `text` |
 | `-v, --verbose` | | Enable verbose output |
 | `-d, --debug` | | Enable debug mode (show stack traces) |
@@ -162,6 +165,37 @@ bmctools redfish tpm <command>
 | Command | Description |
 |---|---|
 | `set-state --state Enabled\|Disabled` | Set TPM state |
+
+### Raw Redfish API Access
+
+Explore any Redfish endpoint directly:
+
+```bash
+bmctools redfish raw <URI>
+```
+
+| Command | Description |
+|---|---|
+| `raw /redfish/v1` | Get Redfish service root |
+| `raw /redfish/v1/Systems` | List systems |
+| `raw /redfish/v1/Systems/{id}` | Get full system resource |
+| `raw /redfish/v1/Managers` | List BMC managers |
+
+**Examples:**
+
+```bash
+# Browse the Redfish service root
+bmctools redfish raw /redfish/v1 -o json-pretty
+
+# Inspect a specific system
+bmctools redfish raw /redfish/v1/Systems/1 -o json-pretty
+
+# Check available Redfish endpoints
+bmctools redfish raw /redfish/v1/Chassis
+
+# Explore OEM extensions
+bmctools redfish raw /redfish/v1/Managers/1
+```
 
 ### Dell-Specific Commands
 
@@ -311,6 +345,8 @@ These aliases map to the full commands for convenience:
 | `bmctools reboot` | `bmctools redfish system reset` |
 | `bmctools update_bios` | `bmctools redfish firmware update-bios` |
 | `bmctools update_bmc` | `bmctools redfish firmware update-bmc` |
+| `bmctools get_nics` | `bmctools redfish dell get-nics` |
+| `bmctools boot_first_by_mac` | `bmctools redfish dell boot-first-by-mac` |
 | `bmctools power_on` | `bmctools ipmi power on` |
 | `bmctools power_off` | `bmctools ipmi power off` |
 | `bmctools power_status` | `bmctools ipmi power status` |
@@ -325,7 +361,7 @@ from bmctools.redfish.redfish import Redfish
 rf = Redfish(ip, username, password, verify_ssl=False, manufacturer=None)
 ```
 
-The `manufacturer` parameter is optional. If not provided, it is auto-detected from the Redfish API. Valid values: `asus`, `dell`, `supermicro`.
+The `manufacturer` parameter is optional. If not provided, it is auto-detected from the Redfish API. Valid values: `asus`, `dell`, `supermicro`, `gigabyte`, `cisco`.
 
 #### Common Methods (All Manufacturers)
 
@@ -375,6 +411,30 @@ asus = rf.manufacturer_class
 asus.get_pending_boot_order()              # -> pending order from FutureState endpoint
 asus.set_trusted_module_state('Enabled')   # TPM management
 ```
+
+#### Gigabyte-Specific Methods
+
+```python
+giga = rf.manufacturer_class
+
+giga.get_network_interfaces()                          # -> list of EthernetInterface dicts
+giga.set_boot_first_by_mac(mac, boot_type='PXE')      # -> moves option to front of boot order
+giga.get_firmware_inventory()                          # -> firmware version dict
+```
+
+Gigabyte BMCs (AMI-based) require ETag headers on PATCH operations. This is handled automatically by the `GigaFish` implementation.
+
+#### Cisco-Specific Methods
+
+```python
+cisco = rf.manufacturer_class
+
+cisco.get_network_interfaces()                         # -> list of EthernetInterface dicts
+cisco.set_boot_first_by_mac(mac, boot_type='PXE')     # -> moves option to front of boot order
+cisco.get_firmware_inventory()                         # -> firmware version dict
+```
+
+Cisco CIMC systems use serial-number-based system IDs (e.g., `WZP...`), which are auto-discovered.
 
 ### Direct API Access
 
@@ -433,21 +493,34 @@ racadm.jobqueue_wait(job_id)
 Redfish.__init__()
   -> GET /redfish/v1/Systems          (find system ID)
   -> GET /redfish/v1/Systems/{id}     (read Manufacturer field)
-  -> instantiate_manufacturer_class() (load DellFish, AsusFish, or SMCFish)
+  -> instantiate_manufacturer_class() (load DellFish, AsusFish, SMCFish, GigaFish, or CiscoFish)
 ```
 
 All high-level `Redfish` methods delegate to the manufacturer-specific class. You can also access the manufacturer class directly via `rf.manufacturer_class` for vendor-specific operations.
 
 ### Vendor Implementation Details
 
-| Feature | Dell | ASUS | Supermicro |
-|---|---|---|---|
-| Boot order get/set | System + Settings endpoint | FutureState (SD) with ETag | Systems/1 |
-| Boot option search by MAC | RelatedItem link traversal | UEFI device path parsing | Not implemented |
-| Firmware updates | Not yet implemented | Multipart upload | Not yet implemented |
-| PXE management | BIOS PxeDev attributes | N/A | N/A |
-| NIC discovery | EthernetInterfaces | N/A | N/A |
-| TPM management | N/A | OEM endpoint with ETag | N/A |
+| Feature | Dell | ASUS | Supermicro | Gigabyte | Cisco |
+|---|---|---|---|---|---|
+| Boot order get/set | System + Settings endpoint | FutureState (SD) with ETag | Systems/1 | Systems/{id} with ETag | Systems/{id} |
+| Boot option search by MAC | RelatedItem link traversal | UEFI device path parsing | Not implemented | UEFI device path parsing | UEFI device path parsing |
+| Boot-first-by-MAC | Yes | N/A | N/A | Yes | Yes |
+| Firmware inventory | Not yet implemented | Multipart upload | Not yet implemented | FirmwareInventory | FirmwareInventory |
+| PXE management | BIOS PxeDev attributes | N/A | N/A | N/A | N/A |
+| NIC discovery | EthernetInterfaces | EthernetInterfaces | N/A | EthernetInterfaces | EthernetInterfaces |
+| TPM management | N/A | OEM endpoint with ETag | N/A | N/A | N/A |
+
+### Manufacturer Detection Strings
+
+The following strings are matched (case-insensitive) from the Redfish `Manufacturer` field:
+
+| Manufacturer | Matched Strings |
+|---|---|
+| Dell | `dell`, `dell inc.` |
+| ASUS | `asus`, `asustekcomputerinc.`, `asustek computer inc.` |
+| Supermicro | `supermicro` |
+| Gigabyte | `gigabyte`, `giga computing` |
+| Cisco | `cisco`, `cisco systems inc`, `cisco systems inc.` |
 
 ### Caching
 

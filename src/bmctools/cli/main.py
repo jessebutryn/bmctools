@@ -24,7 +24,7 @@ Environment Variables:
   BMC_HOST          BMC IP address or hostname
   BMC_USERNAME      BMC username
   BMC_PASSWORD      BMC password
-  BMC_MANUFACTURER  Force manufacturer (asus, dell, supermicro)
+  BMC_MANUFACTURER  Force manufacturer (asus, dell, supermicro, gigabyte, cisco)
   BMC_INSECURE      Disable SSL verification (1, true, yes)
   NO_COLOR          Disable colored output
 
@@ -57,10 +57,12 @@ For more information, visit: https://github.com/yourusername/bmctools
                        help='BMC username (env: BMC_USERNAME)')
     parser.add_argument('-p', '--password',
                        help='BMC password (env: BMC_PASSWORD)')
-    parser.add_argument('-k', '--insecure', action='store_true',
-                       help='Disable SSL verification (env: BMC_INSECURE)')
+    parser.add_argument('-k', '--insecure', action='store_true', default=True,
+                       help='Disable SSL verification (default: True, env: BMC_INSECURE)')
+    parser.add_argument('--secure', action='store_false', dest='insecure',
+                       help='Enable SSL verification')
     parser.add_argument('-m', '--manufacturer',
-                       choices=['asus', 'dell', 'supermicro'],
+                       choices=['asus', 'dell', 'supermicro', 'gigabyte', 'cisco'],
                        help='Force manufacturer (env: BMC_MANUFACTURER)')
 
     parser.add_argument('-v', '--verbose', action='store_true',
@@ -216,6 +218,38 @@ def setup_aliases(subparsers):
     alias.add_argument('--type',
                       help='Boot option type filter (e.g., PXE)')
     alias.set_defaults(alias_target='redfish_dell_boot_first_by_mac')
+
+    # set_boot_override alias
+    alias = subparsers.add_parser('set_boot_override',
+                                   help='Set boot source override (alias for: redfish boot set-override)')
+    alias.add_argument('-t', '--target', required=True,
+                      help='Boot source target (e.g., Pxe, Hdd, Cd, BiosSetup, None)')
+    alias.add_argument('--mode', default='Once',
+                      choices=['Once', 'Continuous', 'Disabled'],
+                      help='Override mode (default: Once)')
+    alias.set_defaults(alias_target='redfish_boot_set_override')
+
+    # get_boot_override alias
+    alias = subparsers.add_parser('get_boot_override',
+                                   help='Get boot source override (alias for: redfish boot get-override)')
+    alias.set_defaults(alias_target='redfish_boot_get_override')
+
+    # get_bios alias
+    alias = subparsers.add_parser('get_bios',
+                                   help='Get BIOS settings (alias for: redfish bios get)')
+    alias.set_defaults(alias_target='redfish_bios_get')
+
+    # get_boot_bios alias
+    alias = subparsers.add_parser('get_boot_bios',
+                                   help='Get boot-related BIOS settings (alias for: redfish bios get-boot)')
+    alias.set_defaults(alias_target='redfish_bios_get_boot')
+
+    # set_bios alias
+    alias = subparsers.add_parser('set_bios',
+                                   help='Set BIOS attributes (alias for: redfish bios set)')
+    alias.add_argument('-a', '--attrs', required=True,
+                      help='BIOS attributes as key=value pairs, comma-separated')
+    alias.set_defaults(alias_target='redfish_bios_set')
 
 
 def dispatch_alias(args):
