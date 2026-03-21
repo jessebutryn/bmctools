@@ -1,5 +1,6 @@
 import json
 from typing import Optional
+from bmctools.redfish.fishapi import RedfishAPI
 
 class CiscoFish:
     """
@@ -12,7 +13,12 @@ class CiscoFish:
     Boot override and BIOS settings are handled by the generic Redfish class
     (standard Redfish endpoints). This class provides Cisco-specific operations.
     """
-    def __init__(self, fishapi):
+    def __init__(self, fishapi: 'RedfishAPI') -> None:
+        """Initialize with a shared RedfishAPI session.
+
+        Args:
+            fishapi: An authenticated :class:`~bmctools.redfish.fishapi.RedfishAPI` instance.
+        """
         self.api = fishapi
         self.system_id = self._get_system_id()
 
@@ -31,12 +37,23 @@ class CiscoFish:
 
 
     def _system_uri(self) -> str:
+        """Return the Redfish URI for the primary system resource."""
         return f'/redfish/v1/Systems/{self.system_id}'
 
 
     # ── System Reset ──────────────────────────────────────────────────
 
     def get_supported_reset_types(self) -> dict:
+        """Get the reset types supported by this Cisco system.
+
+        Returns:
+            Dict with keys ``'types'`` (list of allowable reset type strings),
+            ``'actions'`` (raw Actions dict), and ``'reset_action'`` (the
+            ComputerSystem.Reset action dict).
+
+        Raises:
+            ValueError: If the system resource cannot be read.
+        """
         response = self.api.get(self._system_uri())
         if response.status_code == 200:
             data = response.json()
@@ -60,6 +77,19 @@ class CiscoFish:
 
 
     def reset_system(self, reset_type: str = None) -> bool:
+        """Reset the Cisco system.
+
+        Args:
+            reset_type: Optional Redfish reset type (e.g., ``'GracefulRestart'``,
+                ``'ForceRestart'``).  When ``None``, the type is chosen
+                automatically from the supported reset types.
+
+        Returns:
+            ``True`` on success.
+
+        Raises:
+            ValueError: If the reset request fails.
+        """
         if reset_type is None:
             reset_info = self.get_supported_reset_types()
             supported_types = reset_info['types']
@@ -92,6 +122,15 @@ class CiscoFish:
     # ── Firmware ──────────────────────────────────────────────────────
 
     def get_firmware_inventory(self) -> dict:
+        """Get the firmware inventory for all installed components.
+
+        Returns:
+            Dict with ``'firmware_count'`` (int) and ``'firmware'`` (list of
+            dicts containing Id, Name, Version, Updateable, and Status).
+
+        Raises:
+            ValueError: If the firmware inventory endpoint cannot be read.
+        """
         response = self.api.get('/redfish/v1/UpdateService/FirmwareInventory')
         if response.status_code == 200:
             data = response.json()
@@ -127,6 +166,14 @@ class CiscoFish:
     # ── NIC Discovery ─────────────────────────────────────────────────
 
     def get_network_interfaces(self) -> list:
+        """Get all Ethernet interfaces for the system.
+
+        Returns:
+            List of dicts, one per EthernetInterface resource.
+
+        Raises:
+            ValueError: If the EthernetInterfaces collection cannot be read.
+        """
         response = self.api.get(f'{self._system_uri()}/EthernetInterfaces')
         if response.status_code != 200:
             raise ValueError(f'Failed to retrieve EthernetInterfaces, status code: {response.status_code}')

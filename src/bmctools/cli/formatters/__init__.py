@@ -1,11 +1,13 @@
 """Output formatters for CLI."""
 
+from typing import Any
+
 from .json import format_json
 from .table import format_table
 from .text import format_text
 
 
-def format_output(data, format_type='json'):
+def format_output(data: Any, format_type: str = 'json') -> str:
     """Format output data according to the specified format type.
 
     Args:

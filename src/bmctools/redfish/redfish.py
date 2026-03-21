@@ -8,7 +8,17 @@ class Redfish:
     This class initializes the RedfishAPI and determines the manufacturer-specific
     implementation to use based on the system's manufacturer.
     """
-    def __init__(self, ip: str, username: str, password: str, verify_ssl: bool = False, manufacturer: Optional[str] = None):
+    def __init__(self, ip: str, username: str, password: str, verify_ssl: bool = False, manufacturer: Optional[str] = None) -> None:
+        """Initialize the Redfish client and detect the manufacturer.
+
+        Args:
+            ip: BMC IP address or hostname.
+            username: Redfish username.
+            password: Redfish password.
+            verify_ssl: Whether to verify SSL certificates (default: False).
+            manufacturer: Force a specific manufacturer string instead of
+                auto-detecting from the system resource.
+        """
         self.api = RedfishAPI(ip, username, password, verify_ssl=verify_ssl)
         self.system_id = self.get_system_id()
         self.manufacturer = manufacturer.lower() if manufacturer else self.get_manufacturer()
@@ -16,7 +26,15 @@ class Redfish:
 
 
     def get_system_id(self) -> Optional[str]:
-        """Get the system ID from the Systems collection."""
+        """Get the system ID from the Redfish Systems collection.
+
+        Queries ``/redfish/v1/Systems`` and extracts the ID segment from the
+        first member's ``@odata.id``.
+
+        Returns:
+            System ID string (e.g. ``'System.Embedded.1'``, ``'1'``), or
+            ``None`` if the collection cannot be read.
+        """
         response = self.api.get('/redfish/v1/Systems')
         if response.status_code == 200:
             try:
@@ -34,7 +52,15 @@ class Redfish:
 
 
     def get_manufacturer(self) -> Optional[str]:
-        """Get the manufacturer from the system resource."""
+        """Detect the server manufacturer from the Redfish system resource.
+
+        Reads ``/redfish/v1/Systems/{system_id}`` and returns the lowercased
+        ``Manufacturer`` field.
+
+        Returns:
+            Lowercased manufacturer string (e.g. ``'dell'``, ``'supermicro'``),
+            or ``None`` if unknown or unreachable.
+        """
         if not self.system_id:
             return None
         
@@ -49,8 +75,15 @@ class Redfish:
         return None
 
 
-    def instantiate_manufacturer_class(self, manufacturer: str) -> Optional[str]:
-        """Instantiate manufacturer-specific class based on the manufacturer name."""
+    def instantiate_manufacturer_class(self, manufacturer: str) -> Optional[object]:
+        """Instantiate the manufacturer-specific Redfish class.
+
+        Args:
+            manufacturer: Lowercased manufacturer string (e.g., 'supermicro', 'dell').
+
+        Returns:
+            Manufacturer-specific instance (SMCFish, DellFish, etc.), or None if unknown.
+        """
         if manufacturer == 'supermicro':
             from bmctools.redfish.smcfish import SMCFish
             return SMCFish(self.api)
@@ -71,6 +104,14 @@ class Redfish:
         
     
     def get_boot_order(self) -> list:
+        """Get the current boot order for the system.
+
+        Returns:
+            List of boot option references in order.
+
+        Raises:
+            NotImplementedError: If not supported for the detected manufacturer.
+        """
         if not self.manufacturer_class:
             raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
         
@@ -81,6 +122,17 @@ class Redfish:
         
     
     def get_boot_options(self, nocache: bool = False) -> list:
+        """Get all available boot options.
+
+        Args:
+            nocache: If True, bypass cached results and query the BMC directly.
+
+        Returns:
+            List of boot option dictionaries.
+
+        Raises:
+            NotImplementedError: If not supported for the detected manufacturer.
+        """
         if not self.manufacturer_class:
             raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
         
@@ -91,6 +143,20 @@ class Redfish:
         
 
     def get_boot_option_by_mac(self, mac_address: str, type: Optional[str] = None, nocache: bool = False) -> dict:
+        """Find a boot option matching the given MAC address.
+
+        Args:
+            mac_address: MAC address to search for.
+            type: Optional boot option type filter (e.g., 'PXE').
+            nocache: If True, force a fresh query.
+
+        Returns:
+            Boot option dict.
+
+        Raises:
+            NotImplementedError: If not supported for the detected manufacturer.
+            ValueError: If no matching boot option is found.
+        """
         if not self.manufacturer_class:
             raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
         
@@ -101,6 +167,19 @@ class Redfish:
         
 
     def get_boot_option_by_alias(self, alias: str, nocache: bool = False) -> dict:
+        """Find a boot option by display name or alias.
+
+        Args:
+            alias: Display name or description substring to match (case-insensitive).
+            nocache: If True, force a fresh query.
+
+        Returns:
+            Boot option dict.
+
+        Raises:
+            NotImplementedError: If not supported for the detected manufacturer.
+            ValueError: If no matching boot option is found.
+        """
         if not self.manufacturer_class:
             raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
         
@@ -111,6 +190,17 @@ class Redfish:
         
     
     def set_boot_order(self, boot_order: list) -> None:
+        """Set the boot order on the system.
+
+        Args:
+            boot_order: Ordered list of all boot option references
+                        (e.g., ['Boot0003', 'Boot0001', 'Boot0002']).
+                        Must include every existing boot option.
+
+        Raises:
+            NotImplementedError: If not supported for the detected manufacturer.
+            ValueError: If the provided list is invalid.
+        """
         if not self.manufacturer_class:
             raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
 

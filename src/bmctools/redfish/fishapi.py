@@ -1,11 +1,20 @@
 import requests
 import json
+from typing import Optional
 
 class RedfishAPI:
     """
     Redfish API client for interacting with the Redfish service.
     """
-    def __init__(self, ip, user, password, verify_ssl=True):
+    def __init__(self, ip: str, user: str, password: str, verify_ssl: bool = True) -> None:
+        """Initialize the Redfish API client and establish a session.
+
+        Args:
+            ip: BMC IP address or hostname.
+            user: BMC username.
+            password: BMC password.
+            verify_ssl: If True, verify SSL certificates (default: True).
+        """
         self.ip = ip
         self.user = user
         self.password = password
@@ -26,18 +35,37 @@ class RedfishAPI:
         self._establish_session()
 
 
-    def disable_ssl_verification(self):
+    def disable_ssl_verification(self) -> None:
+        """Disable SSL certificate verification and suppress InsecureRequestWarning."""
         self.verify_ssl = False
         requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
 
 
-    def get(self, endpoint, params=None):
+    def get(self, endpoint: str, params: Optional[dict] = None) -> requests.Response:
+        """Send a GET request to a Redfish endpoint.
+
+        Args:
+            endpoint: Redfish endpoint path (e.g., '/redfish/v1/Systems').
+            params: Optional query parameters.
+
+        Returns:
+            HTTP response object.
+        """
         url = self.base_url + endpoint
         response = self.session.get(url, params=params, verify=self.verify_ssl)
         return response
 
 
-    def post(self, endpoint, data=None):
+    def post(self, endpoint: str, data: Optional[dict] = None) -> requests.Response:
+        """Send a POST request to a Redfish endpoint.
+
+        Args:
+            endpoint: Redfish endpoint path.
+            data: Optional request body as a dict (will be JSON-serialized).
+
+        Returns:
+            HTTP response object.
+        """
         url = self.base_url + endpoint
         if data:
             data = json.dumps(data)
@@ -45,7 +73,16 @@ class RedfishAPI:
         return response
 
 
-    def put(self, endpoint, data=None):
+    def put(self, endpoint: str, data: Optional[dict] = None) -> requests.Response:
+        """Send a PUT request to a Redfish endpoint.
+
+        Args:
+            endpoint: Redfish endpoint path.
+            data: Optional request body as a dict (will be JSON-serialized).
+
+        Returns:
+            HTTP response object.
+        """
         url = self.base_url + endpoint
         if data:
             data = json.dumps(data)
@@ -53,7 +90,17 @@ class RedfishAPI:
         return response
 
 
-    def patch(self, endpoint, data=None, headers=None):
+    def patch(self, endpoint: str, data: Optional[dict] = None, headers: Optional[dict] = None) -> requests.Response:
+        """Send a PATCH request to a Redfish endpoint.
+
+        Args:
+            endpoint: Redfish endpoint path.
+            data: Optional request body as a dict (will be JSON-serialized).
+            headers: Optional additional headers (e.g., ``{'If-Match': etag}``).
+
+        Returns:
+            HTTP response object.
+        """
         url = self.base_url + endpoint
         if data:
             data = json.dumps(data)
@@ -61,13 +108,21 @@ class RedfishAPI:
         return response
 
 
-    def delete(self, endpoint):
+    def delete(self, endpoint: str) -> requests.Response:
+        """Send a DELETE request to a Redfish endpoint.
+
+        Args:
+            endpoint: Redfish endpoint path.
+
+        Returns:
+            HTTP response object.
+        """
         url = self.base_url + endpoint
         response = self.session.delete(url, verify=self.verify_ssl)
         return response
 
 
-    def post_file(self, endpoint, file_path, additional_data=None, file_field_name='file'):
+    def post_file(self, endpoint: str, file_path: str, additional_data: Optional[dict] = None, file_field_name: str = 'file') -> requests.Response:
         """Upload a file via multipart form data.
 
         Args:
@@ -102,7 +157,7 @@ class RedfishAPI:
         return response
 
 
-    def post_multipart(self, endpoint, file_path, update_params, oem_params=None):
+    def post_multipart(self, endpoint: str, file_path: str, update_params: dict, oem_params: Optional[dict] = None) -> requests.Response:
         """Upload firmware using Redfish multipart HTTP push format.
 
         All parts are sent as proper multipart file parts with correct content types.
@@ -145,7 +200,7 @@ class RedfishAPI:
         return response
 
 
-    def _establish_session(self):
+    def _establish_session(self) -> None:
         """Attempt to create a Redfish session if supported."""
         try:
             # Try session-based authentication

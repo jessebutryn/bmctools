@@ -2,6 +2,8 @@
 
 import os
 import sys
+import argparse
+from typing import Optional
 
 
 # Exit codes
@@ -28,12 +30,12 @@ class Colors:
     GRAY = '\033[90m'
 
 
-def is_tty():
+def is_tty() -> bool:
     """Check if stdout is a TTY (supports colors)."""
     return sys.stdout.isatty()
 
 
-def should_use_color(args):
+def should_use_color(args: argparse.Namespace) -> bool:
     """Determine if color output should be used.
 
     Args:
@@ -54,7 +56,7 @@ def should_use_color(args):
     return is_tty()
 
 
-def colorize(text, color, args=None):
+def colorize(text: str, color: str, args: Optional[argparse.Namespace] = None) -> str:
     """Colorize text if color output is enabled.
 
     Args:
@@ -74,7 +76,7 @@ def colorize(text, color, args=None):
     return f"{color}{text}{Colors.RESET}"
 
 
-def print_error(message, args=None):
+def print_error(message: str, args: Optional[argparse.Namespace] = None) -> None:
     """Print error message to stderr.
 
     Args:
@@ -85,7 +87,7 @@ def print_error(message, args=None):
     print(colored_msg, file=sys.stderr)
 
 
-def print_warning(message, args=None):
+def print_warning(message: str, args: Optional[argparse.Namespace] = None) -> None:
     """Print warning message to stderr.
 
     Args:
@@ -96,7 +98,7 @@ def print_warning(message, args=None):
     print(colored_msg, file=sys.stderr)
 
 
-def print_success(message, args=None):
+def print_success(message: str, args: Optional[argparse.Namespace] = None) -> None:
     """Print success message to stdout.
 
     Args:
@@ -107,7 +109,7 @@ def print_success(message, args=None):
     print(colored_msg)
 
 
-def print_verbose(message, args):
+def print_verbose(message: str, args: argparse.Namespace) -> None:
     """Print verbose message if verbose mode is enabled.
 
     Args:
@@ -119,7 +121,7 @@ def print_verbose(message, args):
         print(colored_msg, file=sys.stderr)
 
 
-def print_debug(message, args):
+def print_debug(message: str, args: argparse.Namespace) -> None:
     """Print debug message if debug mode is enabled.
 
     Args:
@@ -131,7 +133,7 @@ def print_debug(message, args):
         print(colored_msg, file=sys.stderr)
 
 
-def get_exit_code(exception):
+def get_exit_code(exception: Exception) -> int:
     """Map exception type to exit code.
 
     Args:
@@ -156,7 +158,7 @@ def get_exit_code(exception):
         return EXIT_GENERAL_ERROR
 
 
-def handle_error(exception, args):
+def handle_error(exception: Exception, args: argparse.Namespace) -> None:
     """Handle and display error to user.
 
     Args:
@@ -177,7 +179,7 @@ def handle_error(exception, args):
         traceback.print_exc(file=sys.stderr)
 
 
-def apply_env_vars(args):
+def apply_env_vars(args: argparse.Namespace) -> argparse.Namespace:
     """Apply environment variables to arguments if not already set.
 
     Args:
@@ -207,7 +209,7 @@ def apply_env_vars(args):
     return args
 
 
-def validate_connection_args(args, required_fields=None):
+def validate_connection_args(args: argparse.Namespace, required_fields: Optional[list] = None) -> None:
     """Validate that required connection arguments are present.
 
     Args:
@@ -232,7 +234,7 @@ def validate_connection_args(args, required_fields=None):
                         f"(BMC_HOST, BMC_USERNAME, BMC_PASSWORD)")
 
 
-def establish_redfish_connection(args):
+def establish_redfish_connection(args: argparse.Namespace):
     """Establish Redfish connection with error handling.
 
     Args:
@@ -275,7 +277,7 @@ def establish_redfish_connection(args):
         raise ConnectionError(f"Failed to connect to {args.ip}: {e}")
 
 
-def establish_ipmi_connection(args):
+def establish_ipmi_connection(args: argparse.Namespace):
     """Establish IPMI connection.
 
     Args:
@@ -303,7 +305,7 @@ def establish_ipmi_connection(args):
     return ipmi
 
 
-def establish_racadm_connection(args):
+def establish_racadm_connection(args: argparse.Namespace):
     """Establish RACADM connection.
 
     Args:

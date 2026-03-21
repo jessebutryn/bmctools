@@ -1,9 +1,10 @@
 """JSON output formatter."""
 
 import json
+from typing import Any
 
 
-def format_json(data, pretty=False):
+def format_json(data: Any, pretty: bool = False) -> str:
     """Format data as JSON.
 
     Args:

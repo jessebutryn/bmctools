@@ -1,16 +1,30 @@
 import json
 from typing import Optional
+from bmctools.redfish.fishapi import RedfishAPI
 
 class AsusFish:
     """
     ASUS Redfish implementation.
     """
-    def __init__(self, fishapi: str):
+    def __init__(self, fishapi: 'RedfishAPI') -> None:
+        """Initialize with a shared RedfishAPI session.
+
+        Args:
+            fishapi: An authenticated :class:`~bmctools.redfish.fishapi.RedfishAPI` instance.
+        """
         self.api = fishapi
         self.boot_options = None
 
 
     def get_boot_order(self) -> list:
+        """Get the current boot order from the ASUS system.
+
+        Returns:
+            List of boot option references in order.
+
+        Raises:
+            ValueError: If the boot order cannot be retrieved.
+        """
         response = self.api.get(f'/redfish/v1/Systems/Self')
         if response.status_code == 200:
             data = response.json()
@@ -24,6 +38,17 @@ class AsusFish:
 
 
     def get_boot_options(self, nocache: bool = False) -> list:
+        """Get all available boot options.
+
+        Args:
+            nocache: If True, bypass the cache and query the BMC directly.
+
+        Returns:
+            List of boot option dictionaries.
+
+        Raises:
+            ValueError: If boot options cannot be retrieved.
+        """
         # Return cached boot options if already fetched and cache is not disabled
         if not nocache and self.boot_options is not None:
             return self.boot_options

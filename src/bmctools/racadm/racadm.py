@@ -22,7 +22,17 @@ class Racadm:
     racadm.jobqueue_wait('JID_12345')
     """
 
-    def __init__(self, ip, username, password):
+    def __init__(self, ip: str, username: str, password: str) -> None:
+        """Initialize the RACADM client.
+
+        Args:
+            ip: BMC IP address or hostname.
+            username: RACADM username.
+            password: RACADM password.
+
+        Raises:
+            FileNotFoundError: If the ``racadm`` binary is not found on the system.
+        """
         racadm = "/usr/local/bin/racadm"
         self.ip = ip
         self.username = username
@@ -43,6 +53,19 @@ class Racadm:
         ]
 
     def _dell_to_dict(self, input: str) -> dict:
+        """Parse racadm text output into a dict.
+
+        Strips security-alert boilerplate lines, trims leading/trailing empty
+        lines, and splits ``key=value`` pairs.  If the first token is a
+        bracketed section header it is removed before parsing.
+
+        Args:
+            input: Raw string output from a racadm command.
+
+        Returns:
+            Dict of key/value pairs, or a list of stripped lines when the
+            output does not contain ``=`` assignments.
+        """
         input = input.strip()
         input = input.splitlines()
         input = [
@@ -75,6 +98,19 @@ class Racadm:
             return input
 
     def get(self, endpoint: str = None, arguments: list = [], format: bool = False) -> dict | str:
+        """Execute a ``racadm get`` command.
+
+        Args:
+            endpoint: RACADM object endpoint to query (e.g., 'bios.sysprofilesettings').
+            arguments: Additional arguments to pass to the command.
+            format: If True, parse output with :meth:`_dell_to_dict` and return a dict.
+
+        Returns:
+            Parsed dict when ``format=True``, otherwise the raw stdout string.
+
+        Raises:
+            RuntimeError: If the racadm command returns a non-zero exit code.
+        """
         _cmd = self.command + ["get"]
         if endpoint:
             _cmd += [endpoint]
@@ -95,6 +131,15 @@ class Racadm:
             raise RuntimeError(result.stderr)
 
     def storage_get(self, endpoint: str = None, arguments: list = []) -> subprocess.CompletedProcess:
+        """Execute a ``racadm storage get`` command.
+
+        Args:
+            endpoint: Storage object to query (e.g., 'vdisks').
+            arguments: Additional arguments to pass to the command.
+
+        Returns:
+            :class:`subprocess.CompletedProcess` instance (caller checks returncode).
+        """
         _cmd = self.command + ["storage"] + ["get"]
         if endpoint:
             _cmd += [endpoint]
@@ -105,6 +150,18 @@ class Racadm:
         return subprocess.run(_cmd, capture_output=True, text=True)
 
     def check_vdisk(self, format: bool = False) -> dict | str | None:
+        """Check for the presence of virtual disks.
+
+        Args:
+            format: If True, parse output with :meth:`_dell_to_dict`.
+
+        Returns:
+            Parsed dict or raw string when virtual disks exist,
+            or ``None`` when no virtual disks are present.
+
+        Raises:
+            RuntimeError: If the command fails for a reason other than "no virtual disks".
+        """
         result = self.storage_get(arguments=["vdisks"])
         if result.returncode == 0:
             if format == True:
@@ -118,6 +175,18 @@ class Racadm:
             raise RuntimeError(result.stderr)
 
     def set(self, endpoint: str = None, arguments: list = []) -> str:
+        """Execute a ``racadm set`` command.
+
+        Args:
+            endpoint: RACADM object endpoint to update (e.g., 'bios.sysprofilesettings.SysProfile').
+            arguments: Additional arguments such as attribute values.
+
+        Returns:
+            Raw stdout string from racadm.
+
+        Raises:
+            RuntimeError: If the racadm command returns a non-zero exit code.
+        """
         _cmd = self.command + ["set"]
         if endpoint:
             _cmd += [endpoint]
@@ -133,6 +202,17 @@ class Racadm:
             raise RuntimeError(result.stderr)
 
     def jobqueue_view(self, job: str) -> dict:
+        """Retrieve detailed information about a job queue entry.
+
+        Args:
+            job: Job ID to inspect (e.g., 'JID_12345').
+
+        Returns:
+            Dict mapping job attribute names to their values.
+
+        Raises:
+            RuntimeError: If the racadm command fails.
+        """
         job_dict = {}
         _cmd = self.command + ["jobqueue", "view", "-i"] + shlex.split(job)
 
@@ -160,11 +240,30 @@ class Racadm:
         return job_dict
 
     def jobqueue_status(self, job: str) -> str:
+        """Get the status string for a job queue entry.
+
+        Args:
+            job: Job ID to check.
+
+        Returns:
+            Status string (e.g., 'Completed', 'Running', 'Failed').
+        """
         result = self.jobqueue_view(job)
         status = result["Status"]
         return status
 
     def jobqueue_wait(self, job: str) -> str:
+        """Block until a job queue entry reaches a terminal state.
+
+        Polls :meth:`jobqueue_status` every second until the status is no
+        longer ``'Running'`` or ``'In Progress'``.
+
+        Args:
+            job: Job ID to wait on.
+
+        Returns:
+            Final status string.
+        """
         status = self.jobqueue_status(job)
         while status == "Running" or status == "In Progress":
             time.sleep(1)
