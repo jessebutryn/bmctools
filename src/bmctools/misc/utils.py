@@ -10,9 +10,16 @@ class DirectoryError(Exception):
     pass
 
 def is_command(cmd: str) -> bool:
-    """
-    is_command(cmd: str)
-        Checks if a given command is in the PATH on the current system.
+    """Check whether a command is available on the current system PATH.
+
+    Args:
+        cmd: Command name to look up (e.g. ``'racadm'``).
+
+    Returns:
+        ``True`` if the command is found on PATH.
+
+    Raises:
+        FileNotFoundError: If the command is not found.
     """
     if shutil.which(cmd) is not None:
         return True
@@ -22,12 +29,16 @@ def is_command(cmd: str) -> bool:
         )
 
 def is_dir_writeable(dir: str) -> bool:
-    """
-    Function to test whether or not a directory exists and is writeable.
+    """Test whether a directory exists and is writeable.
 
-    Sample Usage:
-    if is_dir_writeable(dir):
-        do_thing()
+    Args:
+        dir: Absolute or relative path to the directory.
+
+    Returns:
+        ``True`` if the directory exists and is writeable.
+
+    Raises:
+        DirectoryError: If the directory does not exist or is not writeable.
     """
     if os.path.exists(dir):
         if os.access(dir, os.W_OK):
@@ -38,9 +49,18 @@ def is_dir_writeable(dir: str) -> bool:
         raise DirectoryError(f"The directory '{dir}' does not exist")
 
 
-def is_older_than_unit(given_time: str, age: int, unit: str):
-    """
-    Returns True if given time is older than given unit of time e.g is_older_than_unit(time, 30, 'd').
+def is_older_than_unit(given_time: str, age: int, unit: str) -> bool:
+    """Check whether a timestamp is older than the given duration.
+
+    Args:
+        given_time: Datetime string in ``'%Y-%m-%d %H:%M:%S'`` format.
+        age: Numeric age threshold.
+        unit: Time unit character — ``'d'`` (days), ``'h'`` (hours),
+              ``'m'`` (minutes), or ``'s'`` (seconds).
+
+    Returns:
+        ``True`` if *given_time* is older than ``age`` *unit*\\s ago,
+        ``False`` otherwise.
     """
     time_since_now = datetime.now() - datetime.strptime(given_time, "%Y-%m-%d %H:%M:%S")
     if unit == "d":

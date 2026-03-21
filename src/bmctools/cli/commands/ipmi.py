@@ -1,5 +1,6 @@
 """IPMI command handlers."""
 
+import argparse
 import sys
 from bmctools.cli.utils import (
     establish_ipmi_connection,
@@ -8,7 +9,7 @@ from bmctools.cli.utils import (
 from bmctools.cli.commands.common import wrap_command
 
 
-def setup_ipmi_commands(parser):
+def setup_ipmi_commands(parser: argparse.ArgumentParser) -> None:
     """Setup IPMI subcommands.
 
     Args:
@@ -37,7 +38,7 @@ def setup_ipmi_commands(parser):
     raw_parser.add_argument('command', help='Raw IPMI command')
 
 
-def setup_power_commands(parser):
+def setup_power_commands(parser: argparse.ArgumentParser) -> None:
     """Setup power management subcommands."""
     subparsers = parser.add_subparsers(dest='power_action', help='Power action')
 
@@ -47,7 +48,7 @@ def setup_power_commands(parser):
     subparsers.add_parser('reset', help='Hard reset system')
 
 
-def setup_bmc_commands(parser):
+def setup_bmc_commands(parser: argparse.ArgumentParser) -> None:
     """Setup BMC management subcommands."""
     subparsers = parser.add_subparsers(dest='bmc_action', help='BMC action')
 
@@ -55,7 +56,7 @@ def setup_bmc_commands(parser):
     subparsers.add_parser('reset-cold', help='Cold reset BMC')
 
 
-def setup_sel_commands(parser):
+def setup_sel_commands(parser: argparse.ArgumentParser) -> None:
     """Setup SEL subcommands."""
     subparsers = parser.add_subparsers(dest='sel_action', help='SEL action')
 
@@ -68,7 +69,7 @@ def setup_sel_commands(parser):
                   help='Filter by age (e.g., 7d, 24h)')
 
 
-def setup_sol_commands(parser):
+def setup_sol_commands(parser: argparse.ArgumentParser) -> None:
     """Setup SOL subcommands."""
     subparsers = parser.add_subparsers(dest='sol_action', help='SOL action')
 
@@ -81,14 +82,14 @@ def setup_sol_commands(parser):
 
 # Power Management Handlers
 
-def handle_power_status(args):
+def handle_power_status(args: argparse.Namespace) -> dict:
     """Handle 'ipmi power status' command."""
     ipmi = establish_ipmi_connection(args)
     status = ipmi.power_status()
     return {'power_status': status}
 
 
-def handle_power_on(args):
+def handle_power_on(args: argparse.Namespace) -> dict:
     """Handle 'ipmi power on' command."""
     ipmi = establish_ipmi_connection(args)
     print_verbose("Powering on system...", args)
@@ -96,7 +97,7 @@ def handle_power_on(args):
     return {'message': 'Power on command sent', 'result': result}
 
 
-def handle_power_off(args):
+def handle_power_off(args: argparse.Namespace) -> dict:
     """Handle 'ipmi power off' command."""
     ipmi = establish_ipmi_connection(args)
     print_verbose("Powering off system...", args)
@@ -104,7 +105,7 @@ def handle_power_off(args):
     return {'message': 'Power off command sent', 'result': result}
 
 
-def handle_power_reset(args):
+def handle_power_reset(args: argparse.Namespace) -> dict:
     """Handle 'ipmi power reset' command."""
     ipmi = establish_ipmi_connection(args)
     print_verbose("Resetting system...", args)
@@ -114,7 +115,7 @@ def handle_power_reset(args):
 
 # BMC Management Handlers
 
-def handle_bmc_reset_warm(args):
+def handle_bmc_reset_warm(args: argparse.Namespace) -> dict:
     """Handle 'ipmi bmc reset-warm' command."""
     ipmi = establish_ipmi_connection(args)
     print_verbose("Performing warm reset of BMC...", args)
@@ -122,7 +123,7 @@ def handle_bmc_reset_warm(args):
     return {'message': 'BMC warm reset command sent', 'result': result}
 
 
-def handle_bmc_reset_cold(args):
+def handle_bmc_reset_cold(args: argparse.Namespace) -> dict:
     """Handle 'ipmi bmc reset-cold' command."""
     ipmi = establish_ipmi_connection(args)
     print_verbose("Performing cold reset of BMC...", args)
@@ -132,7 +133,7 @@ def handle_bmc_reset_cold(args):
 
 # SEL Handlers
 
-def handle_sel_list(args):
+def handle_sel_list(args: argparse.Namespace) -> dict:
     """Handle 'ipmi sel list' command."""
     ipmi = establish_ipmi_connection(args)
 
@@ -149,7 +150,7 @@ def handle_sel_list(args):
 
 # SOL Handlers
 
-def handle_sol_deactivate(args):
+def handle_sol_deactivate(args: argparse.Namespace) -> dict:
     """Handle 'ipmi sol deactivate' command."""
     ipmi = establish_ipmi_connection(args)
     print_verbose("Deactivating Serial Over LAN...", args)
@@ -157,7 +158,7 @@ def handle_sol_deactivate(args):
     return {'message': 'SOL deactivate command sent', 'result': result}
 
 
-def handle_sol_looptest(args):
+def handle_sol_looptest(args: argparse.Namespace) -> dict:
     """Handle 'ipmi sol looptest' command."""
     ipmi = establish_ipmi_connection(args)
     loops = getattr(args, 'loops', 10)
@@ -171,7 +172,7 @@ def handle_sol_looptest(args):
 
 # Raw Command Handler
 
-def handle_raw(args):
+def handle_raw(args: argparse.Namespace) -> dict:
     """Handle 'ipmi raw' command."""
     ipmi = establish_ipmi_connection(args)
 
@@ -184,7 +185,7 @@ def handle_raw(args):
 
 # Dispatch Functions
 
-def dispatch(args):
+def dispatch(args: argparse.Namespace) -> int:
     """Dispatch IPMI command to appropriate handler.
 
     Args:
@@ -210,7 +211,7 @@ def dispatch(args):
         return 1
 
 
-def dispatch_power(args):
+def dispatch_power(args: argparse.Namespace) -> int:
     """Dispatch power command."""
     action = args.power_action
     handlers = {
@@ -227,7 +228,7 @@ def dispatch_power(args):
         return 1
 
 
-def dispatch_bmc(args):
+def dispatch_bmc(args: argparse.Namespace) -> int:
     """Dispatch BMC command."""
     action = args.bmc_action
     handlers = {
@@ -242,7 +243,7 @@ def dispatch_bmc(args):
         return 1
 
 
-def dispatch_sel(args):
+def dispatch_sel(args: argparse.Namespace) -> int:
     """Dispatch SEL command."""
     action = args.sel_action
     handlers = {
@@ -256,7 +257,7 @@ def dispatch_sel(args):
         return 1
 
 
-def dispatch_sol(args):
+def dispatch_sol(args: argparse.Namespace) -> int:
     """Dispatch SOL command."""
     action = args.sol_action
     handlers = {
@@ -271,7 +272,7 @@ def dispatch_sol(args):
         return 1
 
 
-def handle_alias(args, target):
+def handle_alias(args: argparse.Namespace, target: str) -> int:
     """Handle aliased commands.
 
     Args:

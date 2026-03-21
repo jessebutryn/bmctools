@@ -1,5 +1,6 @@
 import json
 from typing import Optional
+from bmctools.redfish.fishapi import RedfishAPI
 
 class DellFish:
     """
@@ -8,7 +9,12 @@ class DellFish:
     Dell systems typically use 'System.Embedded.1' as the system ID.
     This implementation supports Dell-specific Redfish endpoints and OEM extensions.
     """
-    def __init__(self, fishapi: str):
+    def __init__(self, fishapi: 'RedfishAPI') -> None:
+        """Initialize with a shared RedfishAPI session.
+
+        Args:
+            fishapi: An authenticated :class:`~bmctools.redfish.fishapi.RedfishAPI` instance.
+        """
         self.api = fishapi
         self.boot_options = None
         self.system_id = self._get_system_id()

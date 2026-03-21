@@ -1,5 +1,6 @@
 """RACADM command handlers."""
 
+import argparse
 import sys
 from bmctools.cli.utils import (
     establish_racadm_connection,
@@ -8,7 +9,7 @@ from bmctools.cli.utils import (
 from bmctools.cli.commands.common import wrap_command
 
 
-def setup_racadm_commands(parser):
+def setup_racadm_commands(parser: argparse.ArgumentParser) -> None:
     """Setup RACADM subcommands.
 
     Args:
@@ -37,7 +38,7 @@ def setup_racadm_commands(parser):
     setup_job_commands(job_parser)
 
 
-def setup_storage_commands(parser):
+def setup_storage_commands(parser: argparse.ArgumentParser) -> None:
     """Setup storage subcommands."""
     subparsers = parser.add_subparsers(dest='storage_action', help='Storage action')
 
@@ -49,7 +50,7 @@ def setup_storage_commands(parser):
                   help='Use formatted output')
 
 
-def setup_job_commands(parser):
+def setup_job_commands(parser: argparse.ArgumentParser) -> None:
     """Setup job queue subcommands."""
     subparsers = parser.add_subparsers(dest='job_action', help='Job action')
 
@@ -70,7 +71,7 @@ def setup_job_commands(parser):
 
 # Configuration Handlers
 
-def handle_get(args):
+def handle_get(args: argparse.Namespace) -> dict:
     """Handle 'racadm get' command."""
     racadm = establish_racadm_connection(args)
 
@@ -90,7 +91,7 @@ def handle_get(args):
     }
 
 
-def handle_set(args):
+def handle_set(args: argparse.Namespace) -> dict:
     """Handle 'racadm set' command."""
     racadm = establish_racadm_connection(args)
 
@@ -115,7 +116,7 @@ def handle_set(args):
 
 # Storage Handlers
 
-def handle_storage_get(args):
+def handle_storage_get(args: argparse.Namespace) -> dict:
     """Handle 'racadm storage get' command."""
     racadm = establish_racadm_connection(args)
 
@@ -132,7 +133,7 @@ def handle_storage_get(args):
     }
 
 
-def handle_storage_check_vdisk(args):
+def handle_storage_check_vdisk(args: argparse.Namespace) -> dict:
     """Handle 'racadm storage check-vdisk' command."""
     racadm = establish_racadm_connection(args)
 
@@ -149,7 +150,7 @@ def handle_storage_check_vdisk(args):
 
 # Job Queue Handlers
 
-def handle_job_view(args):
+def handle_job_view(args: argparse.Namespace) -> dict:
     """Handle 'racadm job view' command."""
     racadm = establish_racadm_connection(args)
 
@@ -163,7 +164,7 @@ def handle_job_view(args):
     }
 
 
-def handle_job_status(args):
+def handle_job_status(args: argparse.Namespace) -> dict:
     """Handle 'racadm job status' command."""
     racadm = establish_racadm_connection(args)
 
@@ -177,7 +178,7 @@ def handle_job_status(args):
     }
 
 
-def handle_job_wait(args):
+def handle_job_wait(args: argparse.Namespace) -> dict:
     """Handle 'racadm job wait' command."""
     racadm = establish_racadm_connection(args)
 
@@ -196,7 +197,7 @@ def handle_job_wait(args):
 
 # Dispatch Functions
 
-def dispatch(args):
+def dispatch(args: argparse.Namespace) -> int:
     """Dispatch RACADM command to appropriate handler.
 
     Args:
@@ -220,7 +221,7 @@ def dispatch(args):
         return 1
 
 
-def dispatch_storage(args):
+def dispatch_storage(args: argparse.Namespace) -> int:
     """Dispatch storage command."""
     action = args.storage_action
     handlers = {
@@ -235,7 +236,7 @@ def dispatch_storage(args):
         return 1
 
 
-def dispatch_job(args):
+def dispatch_job(args: argparse.Namespace) -> int:
     """Dispatch job queue command."""
     action = args.job_action
     handlers = {
@@ -251,7 +252,7 @@ def dispatch_job(args):
         return 1
 
 
-def handle_alias(args, target):
+def handle_alias(args: argparse.Namespace, target: str) -> int:
     """Handle aliased commands.
 
     Args:

@@ -9,7 +9,7 @@ from bmctools.cli.utils import (
 )
 
 
-def create_parser():
+def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with all subcommands.
 
     Returns:
@@ -108,7 +108,7 @@ For more information, visit: https://github.com/yourusername/bmctools
     return parser
 
 
-def setup_aliases(subparsers):
+def setup_aliases(subparsers: argparse._SubParsersAction) -> None:
     """Setup shorthand aliases for common commands.
 
     Args:
@@ -252,7 +252,7 @@ def setup_aliases(subparsers):
     alias.set_defaults(alias_target='redfish_bios_set')
 
 
-def dispatch_alias(args):
+def dispatch_alias(args: argparse.Namespace) -> int:
     """Dispatch aliased command to its target handler.
 
     Args:
@@ -278,7 +278,7 @@ def dispatch_alias(args):
         return EXIT_INVALID_ARGUMENTS
 
 
-def main():
+def main() -> int:
     """Main CLI entry point."""
     parser = create_parser()
     args = parser.parse_args()

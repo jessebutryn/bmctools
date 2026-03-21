@@ -52,32 +52,77 @@ class IpmiTool:
 
 
     def power_status(self) -> str:
+        """Get the current power status of the system.
+
+        Returns:
+            String output from ipmitool (e.g., 'Chassis Power is on').
+        """
         return self.ipmitool_command("power status")
 
 
     def power_off(self) -> str:
+        """Issue a hard power-off command.
+
+        Returns:
+            String output from ipmitool.
+        """
         return self.ipmitool_command("power off")
 
 
     def power_on(self) -> str:
+        """Issue a power-on command.
+
+        Returns:
+            String output from ipmitool.
+        """
         return self.ipmitool_command("power on")
 
 
     def power_reset(self) -> str:
+        """Issue a hard power-reset command.
+
+        Returns:
+            String output from ipmitool.
+        """
         return self.ipmitool_command("power reset")
 
 
     def bmc_reset_warm(self) -> str:
+        """Perform a warm reset of the BMC controller.
+
+        Returns:
+            String output from ipmitool.
+        """
         return self.ipmitool_command("mc reset warm")
 
 
     def bmc_reset_cold(self) -> str:
+        """Perform a cold reset of the BMC controller.
+
+        Returns:
+            String output from ipmitool.
+        """
         return self.ipmitool_command("mc reset cold")
 
 
     def sel_list(
         self, elist: Optional[bool] = False, raw: Optional[bool] = False, age: Optional[bool] = None
     ) -> Union[list, bool]:
+        """Retrieve the System Event Log (SEL).
+
+        Args:
+            elist: If True, use extended list format (``sel elist``) for richer event details.
+            raw: If True, return the raw string output instead of a parsed list.
+            age: Filter events newer than this age string (e.g., '30d', '12h', '2h').
+                 Cannot be combined with ``raw``.
+
+        Returns:
+            Parsed list of event dicts, raw string (if ``raw=True``), or ``False`` if the
+            log is empty.
+
+        Raises:
+            ValueError: If both ``raw`` and ``age`` are specified.
+        """
         if raw and age:
             raise ValueError("raw with age argument is not supported.")
 
@@ -121,10 +166,26 @@ class IpmiTool:
 
 
     def sol_deactivate(self) -> str:
+        """Deactivate an active Serial Over LAN (SOL) session.
+
+        Returns:
+            String output from ipmitool.
+        """
         return self.ipmitool_command("sol deactivate")
 
 
-    def sol_looptest(self, num_loops: Optional[int] = 1):
+    def sol_looptest(self, num_loops: Optional[int] = 1) -> str:
+        """Run a Serial Over LAN loopback test.
+
+        Args:
+            num_loops: Number of loopback iterations to run (default: 1).
+
+        Returns:
+            String output from ipmitool.
+
+        Raises:
+            TypeError: If ``num_loops`` is not an integer.
+        """
         if isinstance(num_loops, int):
             return self.ipmitool_command(f"sol looptest {num_loops}")
         else:

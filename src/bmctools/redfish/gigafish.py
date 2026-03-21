@@ -1,5 +1,6 @@
 import json
 from typing import Optional
+from bmctools.redfish.fishapi import RedfishAPI
 
 class GigaFish:
     """
@@ -7,7 +8,12 @@ class GigaFish:
 
     Gigabyte BMCs typically use '1' as the system ID under /redfish/v1/Systems/.
     """
-    def __init__(self, fishapi):
+    def __init__(self, fishapi: 'RedfishAPI') -> None:
+        """Initialize with a shared RedfishAPI session.
+
+        Args:
+            fishapi: An authenticated :class:`~bmctools.redfish.fishapi.RedfishAPI` instance.
+        """
         self.api = fishapi
         self.boot_options = None
         self.system_id = self._get_system_id()
@@ -27,6 +33,7 @@ class GigaFish:
 
 
     def _system_uri(self) -> str:
+        """Return the Redfish URI for the primary system resource."""
         return f'/redfish/v1/Systems/{self.system_id}'
 
 
@@ -54,6 +61,14 @@ class GigaFish:
 
 
     def get_boot_order(self) -> list:
+        """Get the current boot order from the Gigabyte system.
+
+        Returns:
+            List of boot option references in order.
+
+        Raises:
+            ValueError: If the boot order cannot be retrieved.
+        """
         response = self.api.get(self._system_uri())
         if response.status_code == 200:
             data = response.json()
@@ -66,6 +81,17 @@ class GigaFish:
 
 
     def get_boot_options(self, nocache: bool = False) -> list:
+        """Get all available boot options.
+
+        Args:
+            nocache: If True, bypass the cache and query the BMC directly.
+
+        Returns:
+            List of boot option dictionaries.
+
+        Raises:
+            ValueError: If boot options cannot be retrieved.
+        """
         if not nocache and self.boot_options is not None:
             return self.boot_options
 
@@ -86,6 +112,19 @@ class GigaFish:
 
 
     def get_boot_option_by_mac(self, mac_address: str, type: Optional[str] = None, nocache: bool = False) -> dict:
+        """Get a boot option by MAC address.
+
+        Args:
+            mac_address: MAC address to search for (format: ``XX:XX:XX:XX:XX:XX`` or ``XXXXXXXXXXXX``).
+            type: Optional boot option type to filter by (e.g., ``'PXE'``).
+            nocache: If True, force a fresh API call instead of using cached boot options.
+
+        Returns:
+            Dict containing the matching boot option data.
+
+        Raises:
+            ValueError: If no boot option is found with the specified MAC address or type.
+        """
         normalized_mac = mac_address.replace(':', '').replace('-', '').upper()
 
         boot_options = self.get_boot_options(nocache=nocache)
@@ -106,6 +145,18 @@ class GigaFish:
 
 
     def get_boot_option_by_alias(self, alias: str, nocache: bool = False) -> dict:
+        """Get a boot option by its alias/name.
+
+        Args:
+            alias: Boot option alias to search for (case-insensitive).
+            nocache: If True, force a fresh API call instead of using cached boot options.
+
+        Returns:
+            Dict containing the matching boot option data.
+
+        Raises:
+            ValueError: If no boot option is found with the specified alias.
+        """
         boot_options = self.get_boot_options(nocache=nocache)
 
         for option in boot_options:
@@ -117,6 +168,20 @@ class GigaFish:
 
 
     def set_boot_order(self, boot_order: list) -> bool:
+        """Set the boot order for the system.
+
+        Args:
+            boot_order: Ordered list of boot option references
+                (e.g., ``['Boot0003', 'Boot0004', ...]``). Must include ALL
+                existing boot options — no additions or omissions.
+
+        Returns:
+            ``True`` on success.
+
+        Raises:
+            ValueError: If *boot_order* does not match the current set of options,
+                or if the PATCH request fails.
+        """
         current_boot_order = self.get_boot_order()
 
         if len(boot_order) != len(current_boot_order):
@@ -160,6 +225,16 @@ class GigaFish:
 
 
     def get_supported_reset_types(self) -> dict:
+        """Get the reset types supported by this system.
+
+        Returns:
+            Dict with keys ``'types'`` (list of allowable reset type strings),
+            ``'actions'`` (raw Actions dict), and ``'reset_action'`` (the
+            ComputerSystem.Reset action dict).
+
+        Raises:
+            ValueError: If the system resource cannot be read.
+        """
         response = self.api.get(self._system_uri())
         if response.status_code == 200:
             data = response.json()
@@ -183,6 +258,19 @@ class GigaFish:
 
 
     def reset_system(self, reset_type: str = None) -> bool:
+        """Reset the system.
+
+        Args:
+            reset_type: Optional Redfish reset type (e.g., ``'GracefulRestart'``,
+                ``'ForceRestart'``).  When ``None``, the type is chosen
+                automatically from the supported reset types.
+
+        Returns:
+            ``True`` on success.
+
+        Raises:
+            ValueError: If the reset request fails.
+        """
         if reset_type is None:
             reset_info = self.get_supported_reset_types()
             supported_types = reset_info['types']
@@ -213,6 +301,15 @@ class GigaFish:
 
 
     def get_firmware_inventory(self) -> dict:
+        """Get the firmware inventory for all installed components.
+
+        Returns:
+            Dict with ``'firmware_count'`` (int) and ``'firmware'`` (list of
+            dicts containing Id, Name, Version, Updateable, and Status).
+
+        Raises:
+            ValueError: If the firmware inventory endpoint cannot be read.
+        """
         response = self.api.get('/redfish/v1/UpdateService/FirmwareInventory')
         if response.status_code == 200:
             data = response.json()
@@ -246,6 +343,14 @@ class GigaFish:
 
 
     def get_network_interfaces(self) -> list:
+        """Get all Ethernet interfaces for the system.
+
+        Returns:
+            List of dicts, one per EthernetInterface resource.
+
+        Raises:
+            ValueError: If the EthernetInterfaces collection cannot be read.
+        """
         response = self.api.get(f'{self._system_uri()}/EthernetInterfaces')
         if response.status_code != 200:
             raise ValueError(f'Failed to retrieve EthernetInterfaces, status code: {response.status_code}')

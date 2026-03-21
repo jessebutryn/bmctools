@@ -1,5 +1,6 @@
 """Redfish command handlers."""
 
+import argparse
 import sys
 from bmctools.cli.utils import (
     establish_redfish_connection,
@@ -17,7 +18,7 @@ from bmctools.cli.commands.common import (
 from bmctools.cli.formatters import format_output
 
 
-def setup_redfish_commands(parser):
+def setup_redfish_commands(parser: argparse.ArgumentParser) -> None:
     """Setup Redfish subcommands.
 
     Args:
@@ -54,7 +55,7 @@ def setup_redfish_commands(parser):
     setup_dell_commands(dell_parser)
 
 
-def setup_boot_commands(parser):
+def setup_boot_commands(parser: argparse.ArgumentParser) -> None:
     """Setup boot management subcommands."""
     subparsers = parser.add_subparsers(dest='boot_action', help='Boot action')
 
@@ -107,7 +108,7 @@ def setup_boot_commands(parser):
                   help='Override mode (default: Once)')
 
 
-def setup_firmware_commands(parser):
+def setup_firmware_commands(parser: argparse.ArgumentParser) -> None:
     """Setup firmware management subcommands."""
     subparsers = parser.add_subparsers(dest='firmware_action', help='Firmware action')
 
@@ -130,7 +131,7 @@ def setup_firmware_commands(parser):
                   help='Do not preserve BMC configuration')
 
 
-def setup_system_commands(parser):
+def setup_system_commands(parser: argparse.ArgumentParser) -> None:
     """Setup system management subcommands."""
     subparsers = parser.add_subparsers(dest='system_action', help='System action')
 
@@ -146,7 +147,7 @@ def setup_system_commands(parser):
     subparsers.add_parser('info', help='Get system information')
 
 
-def setup_tpm_commands(parser):
+def setup_tpm_commands(parser: argparse.ArgumentParser) -> None:
     """Setup TPM management subcommands."""
     subparsers = parser.add_subparsers(dest='tpm_action', help='TPM action')
 
@@ -157,7 +158,7 @@ def setup_tpm_commands(parser):
                   help='TPM state')
 
 
-def setup_bios_commands(parser):
+def setup_bios_commands(parser: argparse.ArgumentParser) -> None:
     """Setup BIOS settings subcommands."""
     subparsers = parser.add_subparsers(dest='bios_action', help='BIOS action')
 
@@ -174,7 +175,7 @@ def setup_bios_commands(parser):
                        '(e.g., "IPV4PXE=Enabled,IPV6PXE=Disabled")')
 
 
-def setup_dell_commands(parser):
+def setup_dell_commands(parser: argparse.ArgumentParser) -> None:
     """Setup Dell-specific subcommands."""
     subparsers = parser.add_subparsers(dest='dell_action', help='Dell action')
 
@@ -245,7 +246,7 @@ def setup_dell_commands(parser):
 
 # Boot Management Handlers
 
-def handle_boot_get_order(args):
+def handle_boot_get_order(args: argparse.Namespace) -> dict:
     """Handle 'redfish boot get-order' command."""
     rf = establish_redfish_connection(args)
 
@@ -267,7 +268,7 @@ def handle_boot_get_order(args):
     }
 
 
-def handle_boot_set_order(args):
+def handle_boot_set_order(args: argparse.Namespace) -> dict:
     """Handle 'redfish boot set-order' command."""
     rf = establish_redfish_connection(args)
 
@@ -290,7 +291,7 @@ def handle_boot_set_order(args):
     }
 
 
-def handle_boot_list_options(args):
+def handle_boot_list_options(args: argparse.Namespace) -> dict:
     """Handle 'redfish boot list-options' command."""
     rf = establish_redfish_connection(args)
     nocache = getattr(args, 'no_cache', False)
@@ -301,7 +302,7 @@ def handle_boot_list_options(args):
     }
 
 
-def handle_boot_find_by_mac(args):
+def handle_boot_find_by_mac(args: argparse.Namespace) -> dict:
     """Handle 'redfish boot find-by-mac' command."""
     rf = establish_redfish_connection(args)
     nocache = getattr(args, 'no_cache', False)
@@ -316,7 +317,7 @@ def handle_boot_find_by_mac(args):
     return boot_option
 
 
-def handle_boot_find_by_alias(args):
+def handle_boot_find_by_alias(args: argparse.Namespace) -> dict:
     """Handle 'redfish boot find-by-alias' command."""
     rf = establish_redfish_connection(args)
     nocache = getattr(args, 'no_cache', False)
@@ -329,7 +330,7 @@ def handle_boot_find_by_alias(args):
     return boot_option
 
 
-def handle_boot_get_pending(args):
+def handle_boot_get_pending(args: argparse.Namespace) -> dict:
     """Handle 'redfish boot get-pending' command."""
     rf = establish_redfish_connection(args)
 
@@ -346,13 +347,13 @@ def handle_boot_get_pending(args):
     }
 
 
-def handle_boot_get_override(args):
+def handle_boot_get_override(args: argparse.Namespace) -> dict:
     """Handle 'redfish boot get-override' command."""
     rf = establish_redfish_connection(args)
     return rf.get_boot_override()
 
 
-def handle_boot_set_override(args):
+def handle_boot_set_override(args: argparse.Namespace) -> dict:
     """Handle 'redfish boot set-override' command."""
     rf = establish_redfish_connection(args)
 
@@ -369,19 +370,19 @@ def handle_boot_set_override(args):
 
 # BIOS Settings Handlers
 
-def handle_bios_get(args):
+def handle_bios_get(args: argparse.Namespace) -> dict:
     """Handle 'redfish bios get' command."""
     rf = establish_redfish_connection(args)
     return rf.get_bios_settings()
 
 
-def handle_bios_get_boot(args):
+def handle_bios_get_boot(args: argparse.Namespace) -> dict:
     """Handle 'redfish bios get-boot' command."""
     rf = establish_redfish_connection(args)
     return rf.get_boot_bios_settings()
 
 
-def handle_bios_set(args):
+def handle_bios_set(args: argparse.Namespace) -> dict:
     """Handle 'redfish bios set' command."""
     rf = establish_redfish_connection(args)
 
@@ -406,21 +407,21 @@ def handle_bios_set(args):
 
 # Firmware Management Handlers
 
-def handle_firmware_inventory(args):
+def handle_firmware_inventory(args: argparse.Namespace) -> dict:
     """Handle 'redfish firmware inventory' command."""
     rf = establish_redfish_connection(args)
     inventory = rf.get_firmware_inventory()
     return inventory
 
 
-def handle_firmware_status(args):
+def handle_firmware_status(args: argparse.Namespace) -> dict:
     """Handle 'redfish firmware status' command."""
     rf = establish_redfish_connection(args)
     status = rf.get_update_service_info()
     return status
 
 
-def handle_firmware_update_bios(args):
+def handle_firmware_update_bios(args: argparse.Namespace) -> dict:
     """Handle 'redfish firmware update-bios' command."""
     validate_file_exists(args.file)
     rf = establish_redfish_connection(args)
@@ -432,7 +433,7 @@ def handle_firmware_update_bios(args):
     return result
 
 
-def handle_firmware_update_bmc(args):
+def handle_firmware_update_bmc(args: argparse.Namespace) -> dict:
     """Handle 'redfish firmware update-bmc' command."""
     validate_file_exists(args.file)
     rf = establish_redfish_connection(args)
@@ -449,7 +450,7 @@ def handle_firmware_update_bmc(args):
 
 # System Management Handlers
 
-def handle_system_reset(args):
+def handle_system_reset(args: argparse.Namespace) -> dict:
     """Handle 'redfish system reset' command."""
     rf = establish_redfish_connection(args)
 
@@ -465,7 +466,7 @@ def handle_system_reset(args):
     }
 
 
-def handle_system_reset_types(args):
+def handle_system_reset_types(args: argparse.Namespace) -> dict:
     """Handle 'redfish system reset-types' command."""
     rf = establish_redfish_connection(args)
 
@@ -474,7 +475,7 @@ def handle_system_reset_types(args):
     return reset_info
 
 
-def handle_system_info(args):
+def handle_system_info(args: argparse.Namespace) -> dict:
     """Handle 'redfish system info' command."""
     rf = establish_redfish_connection(args)
 
@@ -489,7 +490,7 @@ def handle_system_info(args):
 
 # TPM Management Handlers
 
-def handle_tpm_set_state(args):
+def handle_tpm_set_state(args: argparse.Namespace) -> dict:
     """Handle 'redfish tpm set-state' command."""
     rf = establish_redfish_connection(args)
 
@@ -510,7 +511,7 @@ def handle_tpm_set_state(args):
 
 # Raw API Handler
 
-def handle_raw(args):
+def handle_raw(args: argparse.Namespace) -> dict:
     """Handle 'redfish raw' command — raw GET against any Redfish URI."""
     rf = establish_redfish_connection(args)
     response = rf.api.get(args.uri)
@@ -522,7 +523,7 @@ def handle_raw(args):
 
 # Dell-Specific Handlers
 
-def handle_dell_get_boot_options(args):
+def handle_dell_get_boot_options(args: argparse.Namespace) -> dict:
     """Handle 'redfish dell get-boot-options' command."""
     rf = establish_redfish_connection(args)
     nocache = getattr(args, 'no_cache', False)
@@ -533,7 +534,7 @@ def handle_dell_get_boot_options(args):
     }
 
 
-def handle_get_nics(args):
+def handle_get_nics(args: argparse.Namespace) -> dict:
     """Handle 'get_nics' command (manufacturer-agnostic)."""
     rf = establish_redfish_connection(args)
     interfaces = rf.get_network_interfaces()
@@ -544,14 +545,14 @@ def handle_get_nics(args):
 
 
 
-def handle_dell_get_nic_attrs(args):
+def handle_dell_get_nic_attrs(args: argparse.Namespace) -> dict:
     """Handle 'redfish dell get-nic-attrs' command."""
     rf = establish_redfish_connection(args)
     result = rf.manufacturer_class.get_nic_attributes(args.mac)
     return result
 
 
-def handle_dell_boot_first_by_mac(args):
+def handle_dell_boot_first_by_mac(args: argparse.Namespace) -> dict:
     """Handle 'redfish dell boot-first-by-mac' command."""
     rf = establish_redfish_connection(args)
     boot_type = getattr(args, 'type', None)
@@ -559,7 +560,7 @@ def handle_dell_boot_first_by_mac(args):
     return result
 
 
-def handle_dell_setup_pxe_boot(args):
+def handle_dell_setup_pxe_boot(args: argparse.Namespace) -> dict:
     """Handle 'redfish dell setup-pxe-boot' command."""
     rf = establish_redfish_connection(args)
     protocol = getattr(args, 'protocol', 'IPv4')
@@ -570,7 +571,7 @@ def handle_dell_setup_pxe_boot(args):
     return result
 
 
-def handle_dell_enable_pxe(args):
+def handle_dell_enable_pxe(args: argparse.Namespace) -> dict:
     """Handle 'redfish dell enable-pxe' command."""
     rf = establish_redfish_connection(args)
     protocol = getattr(args, 'protocol', 'IPv4')
@@ -578,14 +579,14 @@ def handle_dell_enable_pxe(args):
     return result
 
 
-def handle_dell_check_pxe(args):
+def handle_dell_check_pxe(args: argparse.Namespace) -> dict:
     """Handle 'redfish dell check-pxe' command."""
     rf = establish_redfish_connection(args)
     result = rf.manufacturer_class.check_pxe_status(args.mac)
     return result
 
 
-def handle_dell_onetime_boot(args):
+def handle_dell_onetime_boot(args: argparse.Namespace) -> dict:
     """Handle 'redfish dell onetime-boot' command."""
     rf = establish_redfish_connection(args)
 
@@ -603,7 +604,7 @@ def handle_dell_onetime_boot(args):
     }
 
 
-def handle_dell_create_role(args):
+def handle_dell_create_role(args: argparse.Namespace) -> dict:
     """Handle 'redfish dell create-role' command."""
     rf = establish_redfish_connection(args)
 
@@ -621,7 +622,7 @@ def handle_dell_create_role(args):
     }
 
 
-def handle_dell_local_access(args):
+def handle_dell_local_access(args: argparse.Namespace) -> dict:
     """Handle 'redfish dell local-access' command."""
     rf = establish_redfish_connection(args)
 
@@ -644,7 +645,7 @@ def handle_dell_local_access(args):
 
 # Dispatch Functions
 
-def dispatch(args):
+def dispatch(args: argparse.Namespace) -> int:
     """Dispatch Redfish command to appropriate handler.
 
     Args:
@@ -674,7 +675,7 @@ def dispatch(args):
         return 1
 
 
-def dispatch_boot(args):
+def dispatch_boot(args: argparse.Namespace) -> int:
     """Dispatch boot command."""
     action = args.boot_action
     handlers = {
@@ -695,7 +696,7 @@ def dispatch_boot(args):
         return 1
 
 
-def dispatch_firmware(args):
+def dispatch_firmware(args: argparse.Namespace) -> int:
     """Dispatch firmware command."""
     action = args.firmware_action
     handlers = {
@@ -712,7 +713,7 @@ def dispatch_firmware(args):
         return 1
 
 
-def dispatch_system(args):
+def dispatch_system(args: argparse.Namespace) -> int:
     """Dispatch system command."""
     action = args.system_action
     handlers = {
@@ -728,7 +729,7 @@ def dispatch_system(args):
         return 1
 
 
-def dispatch_tpm(args):
+def dispatch_tpm(args: argparse.Namespace) -> int:
     """Dispatch TPM command."""
     action = args.tpm_action
     handlers = {
@@ -742,7 +743,7 @@ def dispatch_tpm(args):
         return 1
 
 
-def dispatch_bios(args):
+def dispatch_bios(args: argparse.Namespace) -> int:
     """Dispatch BIOS settings command."""
     action = args.bios_action
     handlers = {
@@ -758,7 +759,7 @@ def dispatch_bios(args):
         return 1
 
 
-def dispatch_dell(args):
+def dispatch_dell(args: argparse.Namespace) -> int:
     """Dispatch Dell-specific command."""
     action = args.dell_action
     handlers = {
@@ -781,7 +782,7 @@ def dispatch_dell(args):
         return 1
 
 
-def handle_alias(args, target):
+def handle_alias(args: argparse.Namespace, target: str) -> int:
     """Handle aliased commands.
 
     Args:

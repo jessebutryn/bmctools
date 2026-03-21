@@ -1,7 +1,9 @@
 """Table output formatter."""
 
+from typing import Any, Optional
 
-def format_table(data, headers=None):
+
+def format_table(data: Any, headers: Optional[list] = None) -> str:
     """Format data as an ASCII table.
 
     Args:

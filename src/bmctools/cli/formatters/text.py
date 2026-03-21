@@ -1,7 +1,9 @@
 """Text output formatter."""
 
+from typing import Any
 
-def format_text(data):
+
+def format_text(data: Any) -> str:
     """Format data as simple text.
 
     Args:

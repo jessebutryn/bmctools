@@ -1,6 +1,8 @@
 """Common command utilities shared across all commands."""
 
+import argparse
 import sys
+from typing import Any, Callable
 from bmctools.cli.formatters import format_output
 from bmctools.cli.utils import (
     handle_error,
@@ -10,7 +12,7 @@ from bmctools.cli.utils import (
 )
 
 
-def wrap_command(func, args):
+def wrap_command(func: Callable[[argparse.Namespace], Any], args: argparse.Namespace) -> int:
     """Wrap command execution with common error handling.
 
     Args:
@@ -31,7 +33,7 @@ def wrap_command(func, args):
         return get_exit_code(e)
 
 
-def read_file_lines(file_path):
+def read_file_lines(file_path: str) -> list:
     """Read lines from a file.
 
     Args:
@@ -53,7 +55,7 @@ def read_file_lines(file_path):
         raise ValueError(f"Failed to read file {file_path}: {e}")
 
 
-def parse_comma_list(value):
+def parse_comma_list(value: str) -> list:
     """Parse comma-separated list.
 
     Args:
@@ -67,7 +69,7 @@ def parse_comma_list(value):
     return [item.strip() for item in value.split(',') if item.strip()]
 
 
-def confirm_action(prompt, force=False):
+def confirm_action(prompt: str, force: bool = False) -> bool:
     """Prompt user for confirmation on destructive operations.
 
     Args:
@@ -88,7 +90,7 @@ def confirm_action(prompt, force=False):
         return False
 
 
-def show_progress(message, done=False):
+def show_progress(message: str, done: bool = False) -> None:
     """Display progress indicator.
 
     Args:
@@ -101,7 +103,7 @@ def show_progress(message, done=False):
         print(f"⋯ {message}...", file=sys.stderr, end='', flush=True)
 
 
-def validate_file_exists(file_path):
+def validate_file_exists(file_path: str) -> None:
     """Validate that a file exists.
 
     Args:
@@ -117,7 +119,7 @@ def validate_file_exists(file_path):
         raise ValueError(f"Not a file: {file_path}")
 
 
-def parse_key_value_pairs(pairs):
+def parse_key_value_pairs(pairs: list) -> dict:
     """Parse key=value pairs from list of strings.
 
     Args:
