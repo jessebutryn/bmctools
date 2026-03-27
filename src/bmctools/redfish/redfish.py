@@ -189,6 +189,29 @@ class Redfish:
             raise NotImplementedError(f'Boot option by alias retrieval not implemented for manufacturer: {self.manufacturer}')
         
     
+    def set_boot_first_by_mac(self, mac_address: str, boot_type: str = None) -> dict:
+        """Move the boot option matching a MAC address to the front of the boot order.
+
+        Args:
+            mac_address: MAC address of the target NIC.
+            boot_type: Optional boot option type filter (e.g., 'PXE').
+
+        Returns:
+            Dict with the new boot order and the promoted option.
+
+        Raises:
+            NotImplementedError: If not supported for the detected manufacturer.
+            ValueError: If no matching boot option is found.
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.set_boot_first_by_mac(mac_address, boot_type=boot_type)
+        except AttributeError:
+            raise NotImplementedError(f'set_boot_first_by_mac not implemented for manufacturer: {self.manufacturer}')
+
+
     def set_boot_order(self, boot_order: list) -> None:
         """Set the boot order on the system.
 
