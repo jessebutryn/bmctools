@@ -311,7 +311,57 @@ class AsusFish:
                 return option
         
         raise ValueError(f'No boot option found with alias: {alias}')
-    
+
+    def set_boot_first_by_mac(self, mac_address: str, boot_type: str = None) -> dict:
+        """Move the boot option matching a MAC address to the front of the boot order.
+
+        If the system has Boot.BootOrder on /Systems/Self/SD, uses the standard
+        method. If Boot.BootOrder doesn't exist, falls back to SETUP006 via /Bios/SD.
+
+        Args:
+            mac_address: MAC address of the target NIC.
+            boot_type: Optional boot option type filter (e.g., 'PXE').
+
+        Returns:
+            Dict with the new boot order and the promoted option.
+        """
+        # Check if /Systems/Self/SD has a Boot.BootOrder
+        try:
+            current_order = self.get_boot_order()
+        except (ValueError, Exception):
+            current_order = None
+
+        if current_order:
+            # Standard BootOrder method (newer models)
+            option = self.get_boot_option_by_mac(mac_address, type=boot_type)
+            boot_ref = option.get('BootOptionReference')
+            if not boot_ref:
+                raise ValueError(
+                    f'Boot option for MAC {mac_address} has no BootOptionReference'
+                )
+
+            if boot_ref not in current_order:
+                raise ValueError(
+                    f'{boot_ref} not found in current boot order: {current_order}'
+                )
+
+            new_order = [boot_ref] + [b for b in current_order if b != boot_ref]
+            self.set_boot_order(new_order)
+
+            return {
+                'method': 'boot_order',
+                'promoted': boot_ref,
+                'display_name': option.get('DisplayName', ''),
+                'mac_address': mac_address,
+                'boot_order': new_order,
+                'message': f'{boot_ref} ({option.get("DisplayName", "")}) moved to front of boot order'
+            }
+
+        # No Boot.BootOrder — use SETUP006
+        result = self.set_boot_first_by_mac_bios(mac_address, boot_type=boot_type)
+        result['method'] = 'setup006'
+        return result
+
     def get_firmware_inventory(self) -> dict:
         """Get firmware inventory from the UpdateService.
 
@@ -542,3 +592,252 @@ class AsusFish:
             except:
                 error_detail = f"\nResponse text: {response.text}"
             raise ValueError(f'Failed to set TrustedModules state, status code: {response.status_code}{error_detail}')
+
+
+    # ── SETUP006 Boot Order (older ASUS models via /Bios/SD) ──────────
+    #
+    # On older ASUS boards, boot order is not in /Systems/Self/SD BootOrder
+    # but in a BIOS attribute called SETUP006. The value is a semicolon-
+    # delimited string:
+    #
+    #   "display name,0xHEXID,true;another entry,0xHEXID,false;"
+    #
+    # The order of entries IS the boot priority. The hex ID maps to
+    # /BootOptions/XXXX. The boolean is whether the entry is enabled.
+    # MAC addresses appear in the display name for network boot options.
+
+    @staticmethod
+    def parse_setup006(value: str) -> list:
+        """Parse a SETUP006 string into a list of boot entry dicts.
+
+        Args:
+            value: The raw SETUP006 attribute string.
+
+        Returns:
+            List of dicts with keys: display_name, hex_id, enabled, raw
+        """
+        entries = []
+        for part in value.split(';'):
+            part = part.strip()
+            if not part:
+                continue
+            # Format: "display name,0xHEXID,true"
+            pieces = part.rsplit(',', 2)
+            if len(pieces) == 3:
+                display_name = pieces[0]
+                hex_id = pieces[1]
+                enabled = pieces[2].strip().lower() == 'true'
+                entries.append({
+                    'display_name': display_name,
+                    'hex_id': hex_id,
+                    'enabled': enabled,
+                    'raw': part,
+                })
+            else:
+                # Unparseable entry — preserve as-is
+                entries.append({
+                    'display_name': part,
+                    'hex_id': None,
+                    'enabled': None,
+                    'raw': part,
+                })
+        return entries
+
+    @staticmethod
+    def build_setup006(entries: list) -> str:
+        """Rebuild a SETUP006 string from a list of boot entry dicts.
+
+        Args:
+            entries: List of dicts as returned by parse_setup006().
+
+        Returns:
+            The SETUP006 attribute string.
+        """
+        parts = []
+        for entry in entries:
+            if entry.get('hex_id') is not None:
+                enabled_str = 'true' if entry['enabled'] else 'false'
+                parts.append(f"{entry['display_name']},{entry['hex_id']},{enabled_str}")
+            else:
+                parts.append(entry['raw'])
+        return ';'.join(parts) + ';'
+
+    def get_bios_boot_order(self) -> dict:
+        """Get the boot order from the SETUP006 BIOS attribute.
+
+        Returns:
+            Dict with 'entries' (parsed list) and 'raw' (original string).
+
+        Raises:
+            ValueError: If SETUP006 is not found.
+        """
+        response = self.api.get('/redfish/v1/Systems/Self/Bios')
+        if response.status_code != 200:
+            raise ValueError(f'Failed to get BIOS settings, status code: {response.status_code}')
+
+        data = response.json()
+        attributes = data.get('Attributes', {})
+        setup006 = attributes.get('SETUP006')
+        if setup006 is None:
+            raise ValueError('SETUP006 attribute not found in BIOS settings')
+
+        entries = self.parse_setup006(setup006)
+        return {
+            'entries': entries,
+            'raw': setup006,
+        }
+
+    def set_bios_boot_order(self, entries: list) -> bool:
+        """Set the boot order via SETUP006 on /Bios/SD.
+
+        Args:
+            entries: Ordered list of boot entry dicts (from parse_setup006).
+
+        Returns:
+            True if successful.
+        """
+        setup006_value = self.build_setup006(entries)
+
+        sd_endpoint = '/redfish/v1/Systems/Self/Bios/SD'
+        etag = self._get_sd_etag(sd_endpoint)
+
+        payload = {
+            "Attributes": {
+                "SETUP006": setup006_value
+            }
+        }
+
+        headers = {'If-Match': etag}
+        response = self.api.patch(sd_endpoint, data=payload, headers=headers)
+        if response.status_code in [200, 204]:
+            return True
+        else:
+            error_detail = ""
+            try:
+                error_data = response.json()
+                error_detail = f"\nError details: {json.dumps(error_data, indent=2)}"
+            except:
+                error_detail = f"\nResponse text: {response.text}"
+            raise ValueError(f'Failed to set SETUP006, status code: {response.status_code}{error_detail}')
+
+    def set_boot_first_by_hex_id(self, hex_id: str) -> dict:
+        """Move a boot entry to the front of the SETUP006 boot order by hex ID.
+
+        Args:
+            hex_id: The hex boot option ID (e.g., '0x0007' or '0007').
+
+        Returns:
+            Dict with the result including new order.
+        """
+        # Normalize to 0xXXXX format
+        if not hex_id.startswith('0x'):
+            hex_id = f'0x{hex_id.upper()}'
+        hex_id = hex_id.lower()
+
+        boot_data = self.get_bios_boot_order()
+        entries = boot_data['entries']
+
+        # Find the target entry
+        target = None
+        rest = []
+        for entry in entries:
+            entry_hex = (entry.get('hex_id') or '').lower()
+            if entry_hex == hex_id:
+                target = entry
+            else:
+                rest.append(entry)
+
+        if target is None:
+            available = [e['hex_id'] for e in entries if e.get('hex_id')]
+            raise ValueError(f'Boot entry {hex_id} not found. Available: {available}')
+
+        # Ensure the target is enabled
+        target['enabled'] = True
+
+        new_order = [target] + rest
+        self.set_bios_boot_order(new_order)
+
+        return {
+            'promoted': target['hex_id'],
+            'display_name': target['display_name'],
+            'boot_order': [{'hex_id': e['hex_id'], 'display_name': e['display_name'], 'enabled': e['enabled']} for e in new_order],
+            'message': f"{target['hex_id']} ({target['display_name']}) moved to front of boot order"
+        }
+
+    def _build_boot_option_mac_map(self) -> dict:
+        """Build a mapping of BootOption hex IDs to MAC addresses.
+
+        Fetches each BootOption and extracts the MAC from UefiDevicePath.
+
+        Returns:
+            Dict mapping hex ID (e.g., '0x0007') to normalized MAC (e.g., 'A088C2973BE1').
+        """
+        mac_map = {}
+        boot_options = self.get_boot_options(nocache=True)
+        for option in boot_options:
+            uefi_path = option.get('UefiDevicePath', '')
+            if '/MAC(' in uefi_path:
+                mac_start = uefi_path.find('/MAC(') + 5
+                mac_end = uefi_path.find(',', mac_start)
+                if mac_end > mac_start:
+                    mac = uefi_path[mac_start:mac_end].upper()
+                    # BootOption Id is like "0001" — normalize to "0x0001"
+                    opt_id = option.get('Id', '')
+                    hex_id = f'0x{opt_id.upper()}'
+                    mac_map[hex_id.lower()] = mac
+        return mac_map
+
+    def set_boot_first_by_mac_bios(self, mac_address: str, boot_type: str = None) -> dict:
+        """Move a boot entry to the front of SETUP006 by MAC address.
+
+        Matches MAC addresses by cross-referencing BootOptions (UefiDevicePath)
+        with SETUP006 entries (hex ID). Falls back to matching MAC in the
+        display name if not found via BootOptions.
+
+        Args:
+            mac_address: MAC address to search for (e.g., 'A0:88:C2:97:3B:E1').
+            boot_type: Optional type filter to match in display name (e.g., 'PXE', 'HTTP').
+
+        Returns:
+            Dict with the result including new order.
+        """
+        normalized_mac = mac_address.replace(':', '').replace('-', '').upper()
+        display_mac = mac_address.replace('-', ':').upper()
+
+        boot_data = self.get_bios_boot_order()
+        entries = boot_data['entries']
+
+        # Build a map of hex_id -> MAC from BootOptions UefiDevicePath
+        mac_map = self._build_boot_option_mac_map()
+
+        # First pass: match via BootOptions MAC map
+        matches = []
+        for entry in entries:
+            entry_hex = (entry.get('hex_id') or '').lower()
+            entry_mac = mac_map.get(entry_hex, '')
+            if entry_mac == normalized_mac:
+                if boot_type:
+                    if boot_type.upper() in entry.get('display_name', '').upper():
+                        matches.append(entry)
+                else:
+                    matches.append(entry)
+
+        # Second pass: fall back to matching MAC in display name
+        if not matches:
+            for entry in entries:
+                display = entry.get('display_name', '')
+                if display_mac in display.upper() or normalized_mac in display.upper().replace(':', '').replace('-', ''):
+                    if boot_type:
+                        if boot_type.upper() in display.upper():
+                            matches.append(entry)
+                    else:
+                        matches.append(entry)
+
+        if not matches:
+            raise ValueError(
+                f'No boot entry found with MAC {mac_address}'
+                + (f' and type {boot_type}' if boot_type else '')
+            )
+
+        target = matches[0]
+        return self.set_boot_first_by_hex_id(target['hex_id'])

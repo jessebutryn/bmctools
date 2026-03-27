@@ -212,12 +212,12 @@ def setup_aliases(subparsers: argparse._SubParsersAction) -> None:
 
     # boot_first_by_mac alias
     alias = subparsers.add_parser('boot_first_by_mac',
-                                   help='Move NIC to front of boot order (alias for: redfish dell boot-first-by-mac)')
+                                   help='Move NIC to front of boot order (alias for: redfish boot boot-first-by-mac)')
     alias.add_argument('-m', '--mac', required=True,
                       help='MAC address of the NIC')
     alias.add_argument('--type',
                       help='Boot option type filter (e.g., PXE)')
-    alias.set_defaults(alias_target='redfish_dell_boot_first_by_mac')
+    alias.set_defaults(alias_target='redfish_boot_first_by_mac')
 
     # set_boot_override alias
     alias = subparsers.add_parser('set_boot_override',

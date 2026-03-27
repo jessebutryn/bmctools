@@ -96,6 +96,13 @@ def setup_boot_commands(parser: argparse.ArgumentParser) -> None:
     # get-pending
     subparsers.add_parser('get-pending', help='Get pending boot order (ASUS FutureState)')
 
+    # boot-first-by-mac
+    p = subparsers.add_parser('boot-first-by-mac', help='Move a NIC to the front of the boot order by MAC')
+    p.add_argument('-m', '--mac', required=True,
+                  help='MAC address of the NIC')
+    p.add_argument('--type',
+                  help='Boot option type filter (e.g., PXE)')
+
     # get-override
     subparsers.add_parser('get-override', help='Get current boot source override configuration')
 
@@ -345,6 +352,14 @@ def handle_boot_get_pending(args: argparse.Namespace) -> dict:
         'pending_boot_order': pending,
         'count': len(pending)
     }
+
+
+def handle_boot_first_by_mac(args: argparse.Namespace) -> dict:
+    """Handle 'redfish boot boot-first-by-mac' command."""
+    rf = establish_redfish_connection(args)
+    boot_type = getattr(args, 'type', None)
+    result = rf.set_boot_first_by_mac(args.mac, boot_type=boot_type)
+    return result
 
 
 def handle_boot_get_override(args: argparse.Namespace) -> dict:
@@ -685,6 +700,7 @@ def dispatch_boot(args: argparse.Namespace) -> int:
         'find-by-mac': handle_boot_find_by_mac,
         'find-by-alias': handle_boot_find_by_alias,
         'get-pending': handle_boot_get_pending,
+        'boot-first-by-mac': handle_boot_first_by_mac,
         'get-override': handle_boot_get_override,
         'set-override': handle_boot_set_override,
     }
@@ -812,6 +828,8 @@ def handle_alias(args: argparse.Namespace, target: str) -> int:
         return wrap_command(handle_get_nics, args)
     elif target == 'redfish_dell_get_nics':
         return wrap_command(handle_get_nics, args)
+    elif target == 'redfish_boot_first_by_mac':
+        return wrap_command(handle_boot_first_by_mac, args)
     elif target == 'redfish_dell_boot_first_by_mac':
         return wrap_command(handle_dell_boot_first_by_mac, args)
     elif target == 'redfish_dell_check_pxe':
