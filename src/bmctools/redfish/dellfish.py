@@ -196,24 +196,24 @@ class DellFish:
         raise ValueError(f'No boot option found with alias: {alias}')
 
 
-    def set_boot_order(self, boot_order: list) -> bool:
+    def set_boot_order(self, boot_order: list) -> dict:
         """Set the boot order for the Dell system.
-        
+
         Dell systems use PATCH operations on the System resource to update boot order.
-        
+
         Args:
             boot_order: List of boot option references (e.g., ["Boot0003", "Boot0004", ...])
                         Must include ALL boot options, not just a subset.
-        
+
         Returns:
-            True if successful
-            
+            Dict with keys: changed, needs_reboot, previous_boot_order, boot_order.
+
         Raises:
             ValueError: If the boot order doesn't include all required boot options or update fails
         """
         # Get the current boot order to validate the new one
         current_boot_order = self.get_boot_order()
-        
+
         # Validate that the new boot order has the same number of entries
         if len(boot_order) != len(current_boot_order):
             raise ValueError(
@@ -221,7 +221,7 @@ class DellFish:
                 f'You provided {len(boot_order)}. '
                 f'Current boot options: {current_boot_order}'
             )
-        
+
         # Validate that all entries in the new boot order exist in current boot order
         current_set = set(current_boot_order)
         new_set = set(boot_order)
@@ -234,21 +234,35 @@ class DellFish:
             if extra:
                 error_msg += f' Unknown options: {sorted(extra)}.'
             raise ValueError(error_msg)
-        
+
+        # Skip PATCH if the order is already correct
+        if boot_order == current_boot_order:
+            return {
+                'changed': False,
+                'needs_reboot': False,
+                'previous_boot_order': current_boot_order,
+                'boot_order': boot_order,
+            }
+
         # Dell uses the Settings endpoint for boot configuration changes
         endpoint = '/redfish/v1/Systems/System.Embedded.1/Settings'
-        
+
         payload = {
             "Boot": {
                 "BootOrder": boot_order
             }
         }
-        
+
         response = self.api.patch(endpoint, data=payload)
         if response.status_code in [200, 202, 204]:
             # Clear cached boot options as they may have changed
             self.boot_options = None
-            return True
+            return {
+                'changed': True,
+                'needs_reboot': True,
+                'previous_boot_order': current_boot_order,
+                'boot_order': boot_order,
+            }
         else:
             error_detail = ""
             try:
@@ -289,14 +303,19 @@ class DellFish:
         # Move to front, keep the rest in existing order
         new_order = [boot_ref] + [b for b in current_order if b != boot_ref]
 
-        self.set_boot_order(new_order)
+        result = self.set_boot_order(new_order)
 
         return {
+            'changed': result['changed'],
+            'needs_reboot': result['needs_reboot'],
             'promoted': boot_ref,
             'display_name': option.get('DisplayName', ''),
             'mac_address': mac_address,
+            'previous_boot_order': result['previous_boot_order'],
             'boot_order': new_order,
             'message': f'{boot_ref} ({option.get("DisplayName", "")}) moved to front of boot order'
+                       if result['changed'] else
+                       f'{boot_ref} ({option.get("DisplayName", "")}) is already first in boot order'
         }
 
     def setup_pxe_boot(self, mac_address: str, protocol: str = 'IPv4',
@@ -473,6 +492,110 @@ class DellFish:
             except:
                 error_detail = f"\nResponse text: {response.text}"
             raise ValueError(f'Failed to reset system, status code: {response.status_code}{error_detail}')
+
+
+    # ── BMC (Manager) Reset ──────────────────────────────────────────
+
+    def _get_manager_id(self) -> str:
+        """Get the Manager ID (iDRAC) from the Managers collection.
+
+        Returns:
+            Manager ID string (e.g., 'iDRAC.Embedded.1').
+        """
+        response = self.api.get('/redfish/v1/Managers')
+        if response.status_code == 200:
+            data = response.json()
+            members = data.get('Members', [])
+            if members:
+                odata_id = members[0].get('@odata.id', '')
+                return odata_id.split('/')[-1] or 'iDRAC.Embedded.1'
+        return 'iDRAC.Embedded.1'
+
+    def get_supported_bmc_reset_types(self) -> dict:
+        """Get the list of supported reset types for the BMC (iDRAC Manager).
+
+        Returns:
+            Dict with 'types' (list of allowed types), 'actions' (raw Actions dict),
+            and 'reset_action' (the Manager.Reset action dict).
+        """
+        manager_id = self._get_manager_id()
+        response = self.api.get(f'/redfish/v1/Managers/{manager_id}')
+        if response.status_code == 200:
+            data = response.json()
+            actions = data.get('Actions', {})
+
+            reset_action = (actions.get('#Manager.Reset') or
+                          actions.get('Manager.Reset') or
+                          {})
+
+            allowed_values = (reset_action.get('ResetType@Redfish.AllowableValues') or
+                            reset_action.get('AllowableValues') or
+                            [])
+
+            # If no inline values, follow @Redfish.ActionInfo link
+            if not allowed_values:
+                action_info_uri = reset_action.get('@Redfish.ActionInfo')
+                if action_info_uri:
+                    allowed_values = self._get_action_info_allowable_values(action_info_uri)
+
+            return {
+                'manager_id': manager_id,
+                'types': allowed_values,
+                'actions': actions,
+                'reset_action': reset_action
+            }
+        else:
+            raise ValueError(f'Failed to get Manager info, status code: {response.status_code}')
+
+    def _get_action_info_allowable_values(self, action_info_uri: str) -> list:
+        """Fetch allowable values from a Redfish ActionInfo endpoint."""
+        response = self.api.get(action_info_uri)
+        if response.status_code == 200:
+            data = response.json()
+            for param in data.get('Parameters', []):
+                if param.get('Name') == 'ResetType':
+                    return param.get('AllowableValues', [])
+        return []
+
+    def reset_bmc(self, reset_type: str = None) -> bool:
+        """Reset the BMC (iDRAC).
+
+        Args:
+            reset_type: Type of reset (e.g., 'GracefulRestart', 'ForceRestart').
+                If None, will auto-select from supported types.
+
+        Returns:
+            True if reset command was accepted.
+        """
+        manager_id = self._get_manager_id()
+
+        if reset_type is None:
+            reset_info = self.get_supported_bmc_reset_types()
+            supported_types = reset_info['types']
+
+            if not supported_types:
+                reset_type = 'GracefulRestart'
+            else:
+                if 'GracefulRestart' in supported_types:
+                    reset_type = 'GracefulRestart'
+                elif 'ForceRestart' in supported_types:
+                    reset_type = 'ForceRestart'
+                else:
+                    reset_type = supported_types[0]
+
+        payload = {"ResetType": reset_type}
+
+        response = self.api.post(f'/redfish/v1/Managers/{manager_id}/Actions/Manager.Reset', data=payload)
+        if response.status_code in [200, 202, 204]:
+            return True
+        else:
+            error_detail = ""
+            try:
+                error_data = response.json()
+                error_detail = f"\nError details: {json.dumps(error_data, indent=2)}"
+            except:
+                error_detail = f"\nResponse text: {response.text}"
+            raise ValueError(f'Failed to reset BMC, status code: {response.status_code}{error_detail}')
 
 
     def create_user_group(self, role_name: str, privileges: int) -> dict:

@@ -167,7 +167,7 @@ class GigaFish:
         raise ValueError(f'No boot option found with alias: {alias}')
 
 
-    def set_boot_order(self, boot_order: list) -> bool:
+    def set_boot_order(self, boot_order: list) -> dict:
         """Set the boot order for the system.
 
         Args:
@@ -176,7 +176,7 @@ class GigaFish:
                 existing boot options — no additions or omissions.
 
         Returns:
-            ``True`` on success.
+            Dict with keys: changed, needs_reboot, previous_boot_order, boot_order.
 
         Raises:
             ValueError: If *boot_order* does not match the current set of options,
@@ -203,6 +203,15 @@ class GigaFish:
                 error_msg += f' Unknown options: {sorted(extra)}.'
             raise ValueError(error_msg)
 
+        # Skip PATCH if the order is already correct
+        if boot_order == current_boot_order:
+            return {
+                'changed': False,
+                'needs_reboot': False,
+                'previous_boot_order': current_boot_order,
+                'boot_order': boot_order,
+            }
+
         payload = {
             "Boot": {
                 "BootOrder": boot_order
@@ -213,7 +222,12 @@ class GigaFish:
         headers = {'If-Match': etag}
         response = self.api.patch(self._system_uri(), data=payload, headers=headers)
         if response.status_code in [200, 204]:
-            return True
+            return {
+                'changed': True,
+                'needs_reboot': True,
+                'previous_boot_order': current_boot_order,
+                'boot_order': boot_order,
+            }
         else:
             error_detail = ""
             try:
@@ -366,6 +380,110 @@ class GigaFish:
         return interfaces
 
 
+    # ── BMC (Manager) Reset ──────────────────────────────────────────
+
+    def _get_manager_id(self) -> str:
+        """Get the Manager ID from the Managers collection.
+
+        Returns:
+            Manager ID string.
+        """
+        response = self.api.get('/redfish/v1/Managers')
+        if response.status_code == 200:
+            data = response.json()
+            members = data.get('Members', [])
+            if members:
+                odata_id = members[0].get('@odata.id', '')
+                return odata_id.split('/')[-1] or '1'
+        return '1'
+
+    def get_supported_bmc_reset_types(self) -> dict:
+        """Get the list of supported reset types for the BMC (Manager).
+
+        Returns:
+            Dict with 'types' (list of allowed types), 'actions' (raw Actions dict),
+            and 'reset_action' (the Manager.Reset action dict).
+        """
+        manager_id = self._get_manager_id()
+        response = self.api.get(f'/redfish/v1/Managers/{manager_id}')
+        if response.status_code == 200:
+            data = response.json()
+            actions = data.get('Actions', {})
+
+            reset_action = (actions.get('#Manager.Reset') or
+                          actions.get('Manager.Reset') or
+                          {})
+
+            allowed_values = (reset_action.get('ResetType@Redfish.AllowableValues') or
+                            reset_action.get('AllowableValues') or
+                            [])
+
+            # If no inline values, follow @Redfish.ActionInfo link
+            if not allowed_values:
+                action_info_uri = reset_action.get('@Redfish.ActionInfo')
+                if action_info_uri:
+                    allowed_values = self._get_action_info_allowable_values(action_info_uri)
+
+            return {
+                'manager_id': manager_id,
+                'types': allowed_values,
+                'actions': actions,
+                'reset_action': reset_action
+            }
+        else:
+            raise ValueError(f'Failed to get Manager info, status code: {response.status_code}')
+
+    def _get_action_info_allowable_values(self, action_info_uri: str) -> list:
+        """Fetch allowable values from a Redfish ActionInfo endpoint."""
+        response = self.api.get(action_info_uri)
+        if response.status_code == 200:
+            data = response.json()
+            for param in data.get('Parameters', []):
+                if param.get('Name') == 'ResetType':
+                    return param.get('AllowableValues', [])
+        return []
+
+    def reset_bmc(self, reset_type: str = None) -> bool:
+        """Reset the BMC (Manager).
+
+        Args:
+            reset_type: Type of reset (e.g., 'GracefulRestart', 'ForceRestart').
+                If None, will auto-select from supported types.
+
+        Returns:
+            True if reset command was accepted.
+        """
+        manager_id = self._get_manager_id()
+
+        if reset_type is None:
+            reset_info = self.get_supported_bmc_reset_types()
+            supported_types = reset_info['types']
+
+            if not supported_types:
+                reset_type = 'GracefulRestart'
+            else:
+                if 'GracefulRestart' in supported_types:
+                    reset_type = 'GracefulRestart'
+                elif 'ForceRestart' in supported_types:
+                    reset_type = 'ForceRestart'
+                else:
+                    reset_type = supported_types[0]
+
+        payload = {"ResetType": reset_type}
+
+        response = self.api.post(f'/redfish/v1/Managers/{manager_id}/Actions/Manager.Reset', data=payload)
+        if response.status_code in [200, 202, 204]:
+            return True
+        else:
+            error_detail = ""
+            try:
+                error_data = response.json()
+                error_detail = f"\nError details: {json.dumps(error_data, indent=2)}"
+            except:
+                error_detail = f"\nResponse text: {response.text}"
+            raise ValueError(f'Failed to reset BMC, status code: {response.status_code}{error_detail}')
+
+
     def set_boot_first_by_mac(self, mac_address: str, boot_type: str = None) -> dict:
         """Move the boot option matching a MAC address to the front of the boot order.
 
@@ -395,12 +513,17 @@ class GigaFish:
 
         new_order = [boot_ref] + [b for b in current_order if b != boot_ref]
 
-        self.set_boot_order(new_order)
+        result = self.set_boot_order(new_order)
 
         return {
+            'changed': result['changed'],
+            'needs_reboot': result['needs_reboot'],
             'promoted': boot_ref,
             'display_name': option.get('DisplayName', ''),
             'mac_address': mac_address,
+            'previous_boot_order': result['previous_boot_order'],
             'boot_order': new_order,
             'message': f'{boot_ref} ({option.get("DisplayName", "")}) moved to front of boot order'
+                       if result['changed'] else
+                       f'{boot_ref} ({option.get("DisplayName", "")}) is already first in boot order'
         }
