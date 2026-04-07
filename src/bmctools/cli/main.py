@@ -251,6 +251,18 @@ def setup_aliases(subparsers: argparse._SubParsersAction) -> None:
                       help='BIOS attributes as key=value pairs, comma-separated')
     alias.set_defaults(alias_target='redfish_bios_set')
 
+    # reset_bmc alias
+    alias = subparsers.add_parser('reset_bmc',
+                                   help='Reset/reboot the BMC (alias for: redfish system reset-bmc)')
+    alias.add_argument('--type', dest='reset_type',
+                      help='Reset type (e.g., GracefulRestart, ForceRestart)')
+    alias.set_defaults(alias_target='redfish_system_reset_bmc')
+
+    # bmc_reset_types alias
+    alias = subparsers.add_parser('bmc_reset_types',
+                                   help='List supported BMC reset types (alias for: redfish system bmc-reset-types)')
+    alias.set_defaults(alias_target='redfish_system_bmc_reset_types')
+
 
 def dispatch_alias(args: argparse.Namespace) -> int:
     """Dispatch aliased command to its target handler.

@@ -212,13 +212,16 @@ class Redfish:
             raise NotImplementedError(f'set_boot_first_by_mac not implemented for manufacturer: {self.manufacturer}')
 
 
-    def set_boot_order(self, boot_order: list) -> None:
+    def set_boot_order(self, boot_order: list) -> dict:
         """Set the boot order on the system.
 
         Args:
             boot_order: Ordered list of all boot option references
                         (e.g., ['Boot0003', 'Boot0001', 'Boot0002']).
                         Must include every existing boot option.
+
+        Returns:
+            Dict with keys: changed, needs_reboot, previous_boot_order, boot_order.
 
         Raises:
             NotImplementedError: If not supported for the detected manufacturer.
@@ -228,7 +231,7 @@ class Redfish:
             raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
 
         try:
-            self.manufacturer_class.set_boot_order(boot_order)
+            return self.manufacturer_class.set_boot_order(boot_order)
         except AttributeError:
             raise NotImplementedError(f'Setting boot order not implemented for manufacturer: {self.manufacturer}')
 
@@ -271,6 +274,46 @@ class Redfish:
             return self.manufacturer_class.get_supported_reset_types()
         except AttributeError:
             raise NotImplementedError(f'Reset types not implemented for manufacturer: {self.manufacturer}')
+
+
+    def reset_bmc(self, reset_type: str = None) -> bool:
+        """Reset the BMC (Manager).
+
+        Args:
+            reset_type: Type of reset (e.g., GracefulRestart, ForceRestart).
+                        If None, the manufacturer class will auto-select.
+
+        Returns:
+            True if reset command was accepted
+
+        Raises:
+            NotImplementedError: If not implemented for the manufacturer
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.reset_bmc(reset_type)
+        except AttributeError:
+            raise NotImplementedError(f'BMC reset not implemented for manufacturer: {self.manufacturer}')
+
+
+    def get_supported_bmc_reset_types(self) -> dict:
+        """Get supported reset types for the BMC (Manager).
+
+        Returns:
+            Dict containing supported BMC reset types
+
+        Raises:
+            NotImplementedError: If not implemented for the manufacturer
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.get_supported_bmc_reset_types()
+        except AttributeError:
+            raise NotImplementedError(f'BMC reset types not implemented for manufacturer: {self.manufacturer}')
 
 
     def get_firmware_inventory(self) -> dict:

@@ -150,6 +150,14 @@ def setup_system_commands(parser: argparse.ArgumentParser) -> None:
     # reset-types
     subparsers.add_parser('reset-types', help='List supported reset types')
 
+    # reset-bmc
+    p = subparsers.add_parser('reset-bmc', help='Reset/reboot the BMC (Manager)')
+    p.add_argument('--type', dest='reset_type',
+                  help='Reset type (e.g., GracefulRestart, ForceRestart)')
+
+    # bmc-reset-types
+    subparsers.add_parser('bmc-reset-types', help='List supported BMC reset types')
+
     # info
     subparsers.add_parser('info', help='Get system information')
 
@@ -287,15 +295,14 @@ def handle_boot_set_order(args: argparse.Namespace) -> dict:
 
     print_verbose(f"Setting boot order to: {boot_order}", args)
 
-    rf.set_boot_order(boot_order)
+    result = rf.set_boot_order(boot_order)
 
-    # Get updated boot order to confirm
-    updated = rf.get_boot_order()
+    if result['changed']:
+        result['message'] = 'Boot order updated successfully'
+    else:
+        result['message'] = 'Boot order already set to requested order, no change needed'
 
-    return {
-        'message': 'Boot order updated successfully',
-        'boot_order': updated
-    }
+    return result
 
 
 def handle_boot_list_options(args: argparse.Namespace) -> dict:
@@ -486,6 +493,31 @@ def handle_system_reset_types(args: argparse.Namespace) -> dict:
     rf = establish_redfish_connection(args)
 
     reset_info = rf.get_supported_reset_types()
+
+    return reset_info
+
+
+def handle_system_reset_bmc(args: argparse.Namespace) -> dict:
+    """Handle 'redfish system reset-bmc' command."""
+    rf = establish_redfish_connection(args)
+
+    reset_type = getattr(args, 'reset_type', None)
+
+    print_verbose(f"Resetting BMC (type: {reset_type or 'auto'})...", args)
+
+    rf.reset_bmc(reset_type)
+
+    return {
+        'message': 'BMC reset command sent successfully',
+        'reset_type': reset_type or 'auto-selected'
+    }
+
+
+def handle_system_bmc_reset_types(args: argparse.Namespace) -> dict:
+    """Handle 'redfish system bmc-reset-types' command."""
+    rf = establish_redfish_connection(args)
+
+    reset_info = rf.get_supported_bmc_reset_types()
 
     return reset_info
 
@@ -735,6 +767,8 @@ def dispatch_system(args: argparse.Namespace) -> int:
     handlers = {
         'reset': handle_system_reset,
         'reset-types': handle_system_reset_types,
+        'reset-bmc': handle_system_reset_bmc,
+        'bmc-reset-types': handle_system_bmc_reset_types,
         'info': handle_system_info,
     }
 
@@ -844,6 +878,10 @@ def handle_alias(args: argparse.Namespace, target: str) -> int:
         return wrap_command(handle_bios_get_boot, args)
     elif target == 'redfish_bios_set':
         return wrap_command(handle_bios_set, args)
+    elif target == 'redfish_system_reset_bmc':
+        return wrap_command(handle_system_reset_bmc, args)
+    elif target == 'redfish_system_bmc_reset_types':
+        return wrap_command(handle_system_bmc_reset_types, args)
     else:
         print(f"Error: Unknown redfish alias: {target}", file=sys.stderr)
         return 1
