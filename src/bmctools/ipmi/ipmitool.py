@@ -22,33 +22,63 @@ class IpmiTool:
 
     """
 
+    INTERFACES = ["lanplus", "lan"]
+    CIPHER_SUITES = [None, 17, 3, 1]
+
     def __init__(self, host: str, user: str, password: str):
         self.host = host
         self.user = user
         self.password = password
+        self._interface: Optional[str] = None
+        self._cipher_suite: Optional[int] = None
+
+
+    def _build_cmd(self, command: str, interface: str, cipher_suite: Optional[int] = None) -> list:
+        """Build the ipmitool command list."""
+        cmd = [
+            "ipmitool",
+            "-H", shlex.quote(self.host),
+            "-U", shlex.quote(self.user),
+            "-P", shlex.quote(self.password),
+            "-I", interface,
+        ]
+        if cipher_suite is not None:
+            cmd += ["-C", str(cipher_suite)]
+        return cmd + shlex.split(command)
 
 
     def ipmitool_command(self, command: str) -> str:
+        """Execute arbitrary ipmitool command.
+
+        On the first call, tries all interface/cipher suite combinations
+        and caches the working combination for subsequent calls.
         """
-        Execute arbitary ipmitool command.
-        """
-        cmd = [
-            "ipmitool",
-            "-H",
-            shlex.quote(self.host),
-            "-U",
-            shlex.quote(self.user),
-            "-P",
-            shlex.quote(self.password),
-            "-I",
-            "lanplus",
-        ] + shlex.split(command)
-        try:
-            return subprocess.run(
-                cmd, shell=False, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8"
-            ).stdout
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(e.stderr)
+        if self._interface is not None:
+            cmd = self._build_cmd(command, self._interface, self._cipher_suite)
+            try:
+                return subprocess.run(
+                    cmd, shell=False, check=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8"
+                ).stdout
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(e.stderr)
+
+        last_error = None
+        for interface in self.INTERFACES:
+            for cipher_suite in self.CIPHER_SUITES:
+                cmd = self._build_cmd(command, interface, cipher_suite)
+                try:
+                    result = subprocess.run(
+                        cmd, shell=False, check=True,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8"
+                    ).stdout
+                    self._interface = interface
+                    self._cipher_suite = cipher_suite
+                    return result
+                except subprocess.CalledProcessError as e:
+                    last_error = e.stderr
+
+        raise RuntimeError(last_error)
 
 
     def power_status(self) -> str:
