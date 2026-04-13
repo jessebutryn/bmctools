@@ -19,26 +19,42 @@ class AsusFish:
     def get_boot_order(self) -> list:
         """Get the current boot order from the ASUS system.
 
+        Tries the standard BootOrder from /Systems/Self first. If that is
+        not available (older models), falls back to the SETUP006 BIOS
+        attribute via /Bios.
+
         Returns:
-            List of boot option references in order.
+            List of boot option references in order (e.g., ['Boot0003', ...])
+            or SETUP006 entry dicts when using the fallback method.
 
         Raises:
-            ValueError: If the boot order cannot be retrieved.
+            ValueError: If the boot order cannot be retrieved by either method.
         """
-        response = self.api.get(f'/redfish/v1/Systems/Self')
+        # Try standard BootOrder first
+        response = self.api.get('/redfish/v1/Systems/Self')
         if response.status_code == 200:
             data = response.json()
             boot_order = data.get('Boot', {}).get('BootOrder', [])
-            if not boot_order:
-                raise ValueError("BootOrder not found in response")
-            return boot_order
-        else:
-            raise ValueError(f'Failed to retrieve boot order, status code: {response.status_code}')
+            if boot_order:
+                return boot_order
+
+        # Fall back to SETUP006 (older models)
+        try:
+            bios_boot = self.get_bios_boot_order()
+            return bios_boot['entries']
+        except (ValueError, Exception):
+            pass
+
+        raise ValueError("BootOrder not found via /Systems/Self or SETUP006")
         
 
 
     def get_boot_options(self, nocache: bool = False) -> list:
         """Get all available boot options.
+
+        Tries the standard /BootOptions collection first. If that is not
+        available (older models), falls back to parsing boot entries from
+        the SETUP006 BIOS attribute.
 
         Args:
             nocache: If True, bypass the cache and query the BMC directly.
@@ -47,28 +63,38 @@ class AsusFish:
             List of boot option dictionaries.
 
         Raises:
-            ValueError: If boot options cannot be retrieved.
+            ValueError: If boot options cannot be retrieved by either method.
         """
         # Return cached boot options if already fetched and cache is not disabled
         if not nocache and self.boot_options is not None:
             return self.boot_options
-        
+
         response = self.api.get('/redfish/v1/Systems/Self/BootOptions')
         if response.status_code == 200:
             data = response.json()
             members = data.get('Members', [])
-            boot_options = []
-            for member in members:
-                option_response = self.api.get(member['@odata.id'])
-                if option_response.status_code == 200:
-                    option_data = option_response.json()
-                    boot_options.append(option_data)
-            
-            # Cache the boot options
+            if members:
+                boot_options = []
+                for member in members:
+                    option_response = self.api.get(member['@odata.id'])
+                    if option_response.status_code == 200:
+                        option_data = option_response.json()
+                        boot_options.append(option_data)
+
+                # Cache the boot options
+                self.boot_options = boot_options
+                return boot_options
+
+        # Fall back to SETUP006 (older models)
+        try:
+            bios_boot = self.get_bios_boot_order()
+            boot_options = bios_boot['entries']
             self.boot_options = boot_options
             return boot_options
-        else:
-            raise ValueError(f'Failed to retrieve boot options, status code: {response.status_code}')
+        except (ValueError, Exception):
+            pass
+
+        raise ValueError('Failed to retrieve boot options via /BootOptions or SETUP006')
     
 
 
@@ -210,14 +236,36 @@ class AsusFish:
     
 
     def get_pending_boot_order(self) -> list:
-        """Get the pending boot order from the FutureState (SD) endpoint."""
+        """Get the pending boot order from the FutureState (SD) endpoint.
+
+        Tries /Systems/Self/SD BootOrder first. If that has no BootOrder
+        (older models), falls back to reading SETUP006 from /Bios/SD.
+
+        Returns:
+            List of boot option references or SETUP006 entry dicts.
+
+        Raises:
+            ValueError: If pending boot order cannot be retrieved.
+        """
         response = self.api.get('/redfish/v1/Systems/Self/SD')
         if response.status_code == 200:
             data = response.json()
             boot_order = data.get('Boot', {}).get('BootOrder', [])
-            return boot_order
-        else:
-            raise ValueError(f'Failed to retrieve pending boot order, status code: {response.status_code}')
+            if boot_order:
+                return boot_order
+
+        # Fall back to SETUP006 from /Bios/SD (older models)
+        try:
+            sd_response = self.api.get('/redfish/v1/Systems/Self/Bios/SD')
+            if sd_response.status_code == 200:
+                sd_data = sd_response.json()
+                setup006 = sd_data.get('Attributes', {}).get('SETUP006')
+                if setup006 is not None:
+                    return self.parse_setup006(setup006)
+        except (ValueError, Exception):
+            pass
+
+        raise ValueError('Failed to retrieve pending boot order via /Systems/Self/SD or /Bios/SD')
     
 
 
