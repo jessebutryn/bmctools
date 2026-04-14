@@ -305,6 +305,39 @@ def establish_ipmi_connection(args: argparse.Namespace):
     return ipmi
 
 
+def establish_ciscoimc_connection(args: argparse.Namespace):
+    """Establish Cisco IMC XML API connection.
+
+    Args:
+        args: Parsed arguments with connection parameters
+
+    Returns:
+        CiscoImc instance
+
+    Raises:
+        ValueError: If connection parameters are invalid
+        ConnectionError: If connection fails
+    """
+    from bmctools.ciscoimc.ciscoimc import CiscoImc
+
+    validate_connection_args(args)
+
+    print_verbose(f"Connecting to Cisco IMC at {args.ip}...", args)
+
+    try:
+        imc = CiscoImc(
+            ip=args.ip,
+            username=args.username,
+            password=args.password,
+            verify_ssl=not getattr(args, 'insecure', False),
+        )
+
+        print_verbose("Cisco IMC connection established", args)
+        return imc
+    except Exception as e:
+        raise ConnectionError(f"Failed to connect to Cisco IMC at {args.ip}: {e}")
+
+
 def establish_racadm_connection(args: argparse.Namespace):
     """Establish RACADM connection.
 

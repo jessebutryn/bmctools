@@ -102,6 +102,13 @@ For more information, visit: https://github.com/yourusername/bmctools
     except ImportError:
         pass  # Module not yet implemented
 
+    try:
+        from bmctools.cli.commands import ciscoimc as ciscoimc_cmd
+        ciscoimc_parser = subparsers.add_parser('ciscoimc', help='Cisco IMC XML API operations')
+        ciscoimc_cmd.setup_ciscoimc_commands(ciscoimc_parser)
+    except ImportError:
+        pass  # Module not yet implemented
+
     # Shorthand aliases (map to full commands)
     setup_aliases(subparsers)
 
@@ -285,6 +292,9 @@ def dispatch_alias(args: argparse.Namespace) -> int:
     elif target.startswith('racadm_'):
         from bmctools.cli.commands import racadm as racadm_cmd
         return racadm_cmd.handle_alias(args, target)
+    elif target.startswith('ciscoimc_'):
+        from bmctools.cli.commands import ciscoimc as ciscoimc_cmd
+        return ciscoimc_cmd.handle_alias(args, target)
     else:
         print(f"Error: Unknown alias target: {target}", file=sys.stderr)
         return EXIT_INVALID_ARGUMENTS
@@ -330,6 +340,14 @@ def main() -> int:
             return racadm_cmd.dispatch(args)
         except ImportError as e:
             print(f"Error: RACADM module not available: {e}", file=sys.stderr)
+            return EXIT_INVALID_ARGUMENTS
+
+    elif args.command == 'ciscoimc':
+        try:
+            from bmctools.cli.commands import ciscoimc as ciscoimc_cmd
+            return ciscoimc_cmd.dispatch(args)
+        except ImportError as e:
+            print(f"Error: Cisco IMC module not available: {e}", file=sys.stderr)
             return EXIT_INVALID_ARGUMENTS
 
     else:
