@@ -109,10 +109,12 @@ def setup_boot_commands(parser: argparse.ArgumentParser) -> None:
     # set-override
     p = subparsers.add_parser('set-override', help='Set boot source override (e.g., PXE once)')
     p.add_argument('-t', '--target', required=True,
-                  help='Boot source target (e.g., Pxe, Hdd, Cd, BiosSetup, Diags, None)')
+                  help='Boot source target (e.g., Pxe, Hdd, Cd, BiosSetup, UefiBootNext, Diags, None)')
     p.add_argument('--mode', default='Once',
                   choices=['Once', 'Continuous', 'Disabled'],
                   help='Override mode (default: Once)')
+    p.add_argument('--uefi-target',
+                  help='UEFI boot option reference (e.g., Boot0002). Required when target is UefiBootNext.')
 
 
 def setup_firmware_commands(parser: argparse.ArgumentParser) -> None:
@@ -379,15 +381,20 @@ def handle_boot_set_override(args: argparse.Namespace) -> dict:
     """Handle 'redfish boot set-override' command."""
     rf = establish_redfish_connection(args)
 
+    uefi_target = getattr(args, 'uefi_target', None)
+
     print_verbose(f"Setting boot override: target={args.target}, mode={args.mode}...", args)
 
-    rf.set_boot_override(args.target, enabled=args.mode)
+    rf.set_boot_override(args.target, enabled=args.mode, uefi_target=uefi_target)
 
-    return {
+    result = {
         'message': f'Boot override set to {args.target} ({args.mode})',
         'override_target': args.target,
         'override_enabled': args.mode,
     }
+    if uefi_target:
+        result['uefi_target'] = uefi_target
+    return result
 
 
 # BIOS Settings Handlers

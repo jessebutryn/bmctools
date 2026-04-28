@@ -109,6 +109,13 @@ For more information, visit: https://github.com/yourusername/bmctools
     except ImportError:
         pass  # Module not yet implemented
 
+    try:
+        from bmctools.cli.commands import inventory as inventory_cmd
+        inventory_parser = subparsers.add_parser('inventory', help='System inventory (aggregated Redfish data)')
+        inventory_cmd.setup_inventory_commands(inventory_parser)
+    except ImportError:
+        pass  # Module not yet implemented
+
     # Shorthand aliases (map to full commands)
     setup_aliases(subparsers)
 
@@ -230,10 +237,12 @@ def setup_aliases(subparsers: argparse._SubParsersAction) -> None:
     alias = subparsers.add_parser('set_boot_override',
                                    help='Set boot source override (alias for: redfish boot set-override)')
     alias.add_argument('-t', '--target', required=True,
-                      help='Boot source target (e.g., Pxe, Hdd, Cd, BiosSetup, None)')
+                      help='Boot source target (e.g., Pxe, Hdd, Cd, BiosSetup, UefiBootNext, None)')
     alias.add_argument('--mode', default='Once',
                       choices=['Once', 'Continuous', 'Disabled'],
                       help='Override mode (default: Once)')
+    alias.add_argument('--uefi-target',
+                      help='UEFI boot option reference (e.g., Boot0002). Required when target is UefiBootNext.')
     alias.set_defaults(alias_target='redfish_boot_set_override')
 
     # get_boot_override alias
@@ -295,6 +304,9 @@ def dispatch_alias(args: argparse.Namespace) -> int:
     elif target.startswith('ciscoimc_'):
         from bmctools.cli.commands import ciscoimc as ciscoimc_cmd
         return ciscoimc_cmd.handle_alias(args, target)
+    elif target.startswith('inventory_'):
+        from bmctools.cli.commands import inventory as inventory_cmd
+        return inventory_cmd.handle_alias(args, target)
     else:
         print(f"Error: Unknown alias target: {target}", file=sys.stderr)
         return EXIT_INVALID_ARGUMENTS
@@ -348,6 +360,14 @@ def main() -> int:
             return ciscoimc_cmd.dispatch(args)
         except ImportError as e:
             print(f"Error: Cisco IMC module not available: {e}", file=sys.stderr)
+            return EXIT_INVALID_ARGUMENTS
+
+    elif args.command == 'inventory':
+        try:
+            from bmctools.cli.commands import inventory as inventory_cmd
+            return inventory_cmd.dispatch(args)
+        except ImportError as e:
+            print(f"Error: Inventory module not available: {e}", file=sys.stderr)
             return EXIT_INVALID_ARGUMENTS
 
     else:
