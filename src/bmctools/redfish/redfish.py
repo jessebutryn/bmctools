@@ -410,50 +410,99 @@ class Redfish:
         if response.status_code == 200:
             data = response.json()
             boot = data.get('Boot', {})
-            return {
+            result = {
                 'override_target': boot.get('BootSourceOverrideTarget', 'None'),
                 'override_enabled': boot.get('BootSourceOverrideEnabled', 'Disabled'),
                 'allowable_targets': boot.get('BootSourceOverrideTarget@Redfish.AllowableValues', []),
                 'allowable_modes': boot.get('BootSourceOverrideEnabled@Redfish.AllowableValues', []),
             }
+            if boot.get('UefiTargetBootSourceOverride'):
+                result['uefi_target'] = boot['UefiTargetBootSourceOverride']
+            if boot.get('BootNext'):
+                result['boot_next'] = boot['BootNext']
+            return result
         else:
             raise ValueError(f'Failed to get system info, status code: {response.status_code}')
 
 
-    def set_boot_override(self, target: str, enabled: str = 'Once') -> bool:
+    def set_boot_override(self, target: str, enabled: str = 'Once',
+                          uefi_target: str = None) -> bool:
         """Set boot source override to boot from a specific device type.
 
         This is standard Redfish and works on all manufacturers.
 
         Args:
-            target: Boot source target (e.g., 'Pxe', 'Hdd', 'Cd', 'BiosSetup', 'None')
+            target: Boot source target (e.g., 'Pxe', 'Hdd', 'Cd', 'BiosSetup',
+                    'UefiBootNext', 'None')
             enabled: Override mode: 'Once', 'Continuous', or 'Disabled'
+            uefi_target: UEFI boot option reference (e.g., 'Boot0002'). Required
+                         when target is 'UefiBootNext'.
 
         Returns:
             True if successful.
         """
+        if target == 'UefiBootNext' and not uefi_target:
+            raise ValueError("uefi_target is required when target is 'UefiBootNext'")
+
         if self.manufacturer_class and hasattr(self.manufacturer_class, 'set_boot_override'):
-            return self.manufacturer_class.set_boot_override(target, enabled)
+            return self.manufacturer_class.set_boot_override(target, enabled, uefi_target=uefi_target)
 
-        payload = {
-            "Boot": {
-                "BootSourceOverrideTarget": target,
-                "BootSourceOverrideEnabled": enabled,
-            }
-        }
-
-        response = self.api.patch(f'/redfish/v1/Systems/{self.system_id}', data=payload)
-        if response.status_code in [200, 204]:
-            return True
+        if target == 'UefiBootNext':
+            payloads = self._uefi_boot_next_payloads(uefi_target, enabled)
         else:
-            error_detail = ""
-            try:
-                import json
-                error_data = response.json()
-                error_detail = f"\nError details: {json.dumps(error_data, indent=2)}"
-            except:
-                error_detail = f"\nResponse text: {response.text}"
-            raise ValueError(f'Failed to set boot override, status code: {response.status_code}{error_detail}')
+            payloads = [{
+                "Boot": {
+                    "BootSourceOverrideTarget": target,
+                    "BootSourceOverrideEnabled": enabled,
+                }
+            }]
+
+        last_response = None
+        for payload in payloads:
+            response = self.api.patch(f'/redfish/v1/Systems/{self.system_id}', data=payload)
+            if response.status_code in [200, 204]:
+                return True
+            last_response = response
+
+        error_detail = ""
+        try:
+            import json
+            error_data = last_response.json()
+            error_detail = f"\nError details: {json.dumps(error_data, indent=2)}"
+        except:
+            error_detail = f"\nResponse text: {last_response.text}"
+        raise ValueError(f'Failed to set boot override, status code: {last_response.status_code}{error_detail}')
+
+
+    def _uefi_boot_next_payloads(self, uefi_target: str, enabled: str) -> list:
+        """Return a list of payload variants to try for UefiBootNext, in priority order.
+
+        BMCs vary in which properties they accept:
+        1. UefiBootNext + UefiTargetBootSourceOverride (Redfish spec standard)
+        2. UefiBootNext + BootNext (some BMCs use BootNext instead)
+        3. BootNext alone (BMCs that don't support UefiBootNext as a target at all)
+        """
+        return [
+            {
+                "Boot": {
+                    "BootSourceOverrideTarget": "UefiBootNext",
+                    "BootSourceOverrideEnabled": enabled,
+                    "UefiTargetBootSourceOverride": uefi_target,
+                }
+            },
+            {
+                "Boot": {
+                    "BootSourceOverrideTarget": "UefiBootNext",
+                    "BootSourceOverrideEnabled": enabled,
+                    "BootNext": uefi_target,
+                }
+            },
+            {
+                "Boot": {
+                    "BootNext": uefi_target,
+                }
+            },
+        ]
 
 
     # ── BIOS Settings (standard Redfish, all manufacturers) ───────────
@@ -534,6 +583,114 @@ class Redfish:
             except:
                 error_detail = f"\nResponse text: {response.text}"
             raise ValueError(f'Failed to set BIOS settings, status code: {response.status_code}{error_detail}')
+
+
+    def get_system_inventory(self) -> dict:
+        """Collect a comprehensive system inventory from Redfish.
+
+        Aggregates system identity, processor/memory summaries, network
+        interfaces, firmware inventory, boot order, and boot override into
+        a single dict.  Each section is collected independently so a failure
+        in one area does not prevent the rest from being returned.
+
+        Returns:
+            Dict with inventory sections.  Sections that could not be
+            retrieved will have an ``"error"`` value instead.
+        """
+        inventory: dict = {}
+
+        # ── System identity ────────────────────────────────────────────
+        try:
+            response = self.api.get(f'/redfish/v1/Systems/{self.system_id}')
+            if response.status_code == 200:
+                data = response.json()
+                inventory['system'] = {
+                    'manufacturer': data.get('Manufacturer'),
+                    'model': data.get('Model'),
+                    'serial_number': data.get('SerialNumber'),
+                    'sku': data.get('SKU'),
+                    'part_number': data.get('PartNumber'),
+                    'uuid': data.get('UUID'),
+                    'hostname': data.get('HostName'),
+                    'bios_version': data.get('BiosVersion'),
+                    'power_state': data.get('PowerState'),
+                    'system_type': data.get('SystemType'),
+                    'indicator_led': data.get('IndicatorLED'),
+                    'status': data.get('Status'),
+                }
+
+                # Processor summary
+                proc = data.get('ProcessorSummary')
+                if proc:
+                    inventory['processor_summary'] = {
+                        'count': proc.get('Count'),
+                        'model': proc.get('Model'),
+                        'status': proc.get('Status'),
+                    }
+
+                # Memory summary
+                mem = data.get('MemorySummary')
+                if mem:
+                    inventory['memory_summary'] = {
+                        'total_gib': mem.get('TotalSystemMemoryGiB'),
+                        'status': mem.get('Status'),
+                    }
+            else:
+                inventory['system'] = {'error': f'HTTP {response.status_code}'}
+        except Exception as e:
+            inventory['system'] = {'error': str(e)}
+
+        # ── BMC / Manager info ─────────────────────────────────────────
+        try:
+            response = self.api.get('/redfish/v1/Managers')
+            if response.status_code == 200:
+                members = response.json().get('Members', [])
+                if members:
+                    mgr_uri = members[0].get('@odata.id', '')
+                    mgr_resp = self.api.get(mgr_uri)
+                    if mgr_resp.status_code == 200:
+                        mgr = mgr_resp.json()
+                        inventory['bmc'] = {
+                            'id': mgr.get('Id'),
+                            'firmware_version': mgr.get('FirmwareVersion'),
+                            'manager_type': mgr.get('ManagerType'),
+                            'model': mgr.get('Model'),
+                            'status': mgr.get('Status'),
+                        }
+        except Exception as e:
+            inventory['bmc'] = {'error': str(e)}
+
+        # ── Network interfaces / MAC addresses ─────────────────────────
+        try:
+            inventory['network_interfaces'] = self.get_network_interfaces()
+        except Exception as e:
+            inventory['network_interfaces'] = {'error': str(e)}
+
+        # ── Firmware inventory ─────────────────────────────────────────
+        try:
+            inventory['firmware'] = self.get_firmware_inventory()
+        except Exception as e:
+            inventory['firmware'] = {'error': str(e)}
+
+        # ── Boot order ─────────────────────────────────────────────────
+        try:
+            inventory['boot_order'] = self.get_boot_order()
+        except Exception as e:
+            inventory['boot_order'] = {'error': str(e)}
+
+        # ── Boot options ───────────────────────────────────────────────
+        try:
+            inventory['boot_options'] = self.get_boot_options()
+        except Exception as e:
+            inventory['boot_options'] = {'error': str(e)}
+
+        # ── Boot source override ───────────────────────────────────────
+        try:
+            inventory['boot_override'] = self.get_boot_override()
+        except Exception as e:
+            inventory['boot_override'] = {'error': str(e)}
+
+        return inventory
 
 
     def update_bios_firmware(self, firmware_path: str) -> dict:
