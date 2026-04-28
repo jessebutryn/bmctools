@@ -871,6 +871,8 @@ def handle_alias(args: argparse.Namespace, target: str) -> int:
         return wrap_command(handle_get_nics, args)
     elif target == 'redfish_boot_first_by_mac':
         return wrap_command(handle_boot_first_by_mac, args)
+    elif target == 'redfish_boot_find_by_mac':
+        return wrap_command(handle_boot_find_by_mac, args)
     elif target == 'redfish_dell_boot_first_by_mac':
         return wrap_command(handle_dell_boot_first_by_mac, args)
     elif target == 'redfish_dell_check_pxe':

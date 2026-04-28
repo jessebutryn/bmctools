@@ -1,4 +1,6 @@
 
+from typing import Optional
+
 from bmctools.redfish.fishapi import RedfishAPI
 
 class SMCFish:
@@ -171,3 +173,77 @@ class SMCFish:
             return boot_options
         else:
             raise ValueError(f'Failed to retrieve boot options, status code: {response.status_code}')
+
+
+    def get_network_interfaces(self) -> list:
+        """Get NIC information including MAC addresses from the Supermicro system.
+
+        Queries the EthernetInterfaces collection under /redfish/v1/Systems/1
+        and returns details for each interface.
+
+        Returns:
+            List of dicts, each containing interface details (Id, Name,
+            MACAddress, SpeedMbps, Status, etc.)
+
+        Raises:
+            ValueError: If the interfaces cannot be retrieved
+        """
+        response = self.api.get('/redfish/v1/Systems/1/EthernetInterfaces')
+        if response.status_code != 200:
+            raise ValueError(f'Failed to retrieve EthernetInterfaces, status code: {response.status_code}')
+
+        data = response.json()
+        members = data.get('Members', [])
+        interfaces = []
+        for member in members:
+            iface_resp = self.api.get(member['@odata.id'])
+            if iface_resp.status_code == 200:
+                interfaces.append(iface_resp.json())
+
+        return interfaces
+
+
+    def get_boot_option_by_mac(self, mac_address: str, type: Optional[str] = None, nocache: bool = False) -> dict:
+        """Get a boot option by MAC address.
+
+        Supermicro encodes the MAC in the BootOption ``DisplayName`` as
+        ``(MAC:xxxxxxxxxxxx)`` rather than in a ``UefiDevicePath`` field,
+        and does not populate ``BootOptionType``, so we parse the MAC from
+        the display name and use ``type`` as a substring match against it.
+
+        Args:
+            mac_address: MAC address (format: ``XX:XX:XX:XX:XX:XX`` or ``XXXXXXXXXXXX``).
+            type: Optional substring to match against ``DisplayName`` (e.g., ``'PXE'``).
+            nocache: If True, force a fresh API call instead of using cached boot options.
+
+        Returns:
+            Dict containing the matching boot option data.
+
+        Raises:
+            ValueError: If no boot option is found with the specified MAC address (and type).
+        """
+        normalized_mac = mac_address.replace(':', '').replace('-', '').upper()
+
+        boot_options = self.get_boot_options(nocache=nocache)
+
+        for option in boot_options:
+            display_name = option.get('DisplayName', '')
+            marker = '(MAC:'
+            idx = display_name.find(marker)
+            if idx == -1:
+                continue
+            mac_start = idx + len(marker)
+            mac_end = display_name.find(')', mac_start)
+            if mac_end <= mac_start:
+                continue
+            option_mac = display_name[mac_start:mac_end].upper()
+            if option_mac != normalized_mac:
+                continue
+            if type and type.lower() not in display_name.lower():
+                continue
+            return option
+
+        raise ValueError(
+            f'No boot option found with MAC address: {mac_address}'
+            + (f' and type: {type}' if type else '')
+        )
