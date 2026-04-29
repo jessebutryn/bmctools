@@ -233,6 +233,17 @@ def setup_aliases(subparsers: argparse._SubParsersAction) -> None:
                       help='Boot option type filter (e.g., PXE)')
     alias.set_defaults(alias_target='redfish_boot_first_by_mac')
 
+    # get_boot_option_by_mac alias
+    alias = subparsers.add_parser('get_boot_option_by_mac',
+                                   help='Get boot option matching a MAC address (alias for: redfish boot find-by-mac)')
+    alias.add_argument('-m', '--mac', required=True,
+                      help='MAC address (e.g., 7C:C2:55:42:72:A2)')
+    alias.add_argument('--type',
+                      help='Boot option type filter (e.g., PXE)')
+    alias.add_argument('--no-cache', action='store_true',
+                      help='Force fresh query (bypass cache)')
+    alias.set_defaults(alias_target='redfish_boot_find_by_mac')
+
     # set_boot_override alias
     alias = subparsers.add_parser('set_boot_override',
                                    help='Set boot source override (alias for: redfish boot set-override)')
