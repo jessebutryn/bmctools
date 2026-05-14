@@ -3,6 +3,34 @@ from typing import Optional
 
 from bmctools.redfish.fishapi import RedfishAPI
 
+
+def _canonical_mac(mac: str) -> str:
+    """Normalize a MAC string to canonical ``XX:XX:XX:XX:XX:XX`` (upper, colon-separated)."""
+    hex_only = mac.replace(':', '').replace('-', '').upper()
+    return ':'.join(hex_only[i:i + 2] for i in range(0, len(hex_only), 2))
+
+
+def _mac_from_display_name(display_name: str) -> Optional[str]:
+    """Extract a MAC encoded as ``(MAC:xxxxxxxxxxxx)`` from a Supermicro BootOption DisplayName.
+
+    Returns the canonical MAC string, or ``None`` if not present.
+    """
+    if not display_name:
+        return None
+    marker = '(MAC:'
+    idx = display_name.find(marker)
+    if idx == -1:
+        return None
+    mac_start = idx + len(marker)
+    mac_end = display_name.find(')', mac_start)
+    if mac_end <= mac_start:
+        return None
+    token = display_name[mac_start:mac_end]
+    if len(token.replace(':', '').replace('-', '')) != 12:
+        return None
+    return _canonical_mac(token)
+
+
 class SMCFish:
     """
     Supermicro Redfish implementation.
@@ -144,6 +172,10 @@ class SMCFish:
     def get_boot_options(self, nocache: bool = False) -> list:
         """Get all available boot options.
 
+        Each option is enriched with a ``MACAddress`` field (canonical
+        ``XX:XX:XX:XX:XX:XX``) when the ``DisplayName`` encodes a MAC as
+        ``(MAC:xxxxxxxxxxxx)``.
+
         Args:
             nocache: If True, bypass the cache and query the BMC directly.
 
@@ -166,6 +198,9 @@ class SMCFish:
                 option_response = self.api.get(member['@odata.id'])
                 if option_response.status_code == 200:
                     option_data = option_response.json()
+                    mac = _mac_from_display_name(option_data.get('DisplayName', ''))
+                    if mac:
+                        option_data['MACAddress'] = mac
                     boot_options.append(option_data)
 
             # Cache the boot options
@@ -208,8 +243,8 @@ class SMCFish:
 
         Supermicro encodes the MAC in the BootOption ``DisplayName`` as
         ``(MAC:xxxxxxxxxxxx)`` rather than in a ``UefiDevicePath`` field,
-        and does not populate ``BootOptionType``, so we parse the MAC from
-        the display name and use ``type`` as a substring match against it.
+        and does not populate ``BootOptionType``, so we use ``type`` as a
+        substring match against the display name.
 
         Args:
             mac_address: MAC address (format: ``XX:XX:XX:XX:XX:XX`` or ``XXXXXXXXXXXX``).
@@ -222,24 +257,12 @@ class SMCFish:
         Raises:
             ValueError: If no boot option is found with the specified MAC address (and type).
         """
-        normalized_mac = mac_address.replace(':', '').replace('-', '').upper()
+        target = _canonical_mac(mac_address)
 
-        boot_options = self.get_boot_options(nocache=nocache)
-
-        for option in boot_options:
-            display_name = option.get('DisplayName', '')
-            marker = '(MAC:'
-            idx = display_name.find(marker)
-            if idx == -1:
+        for option in self.get_boot_options(nocache=nocache):
+            if option.get('MACAddress') != target:
                 continue
-            mac_start = idx + len(marker)
-            mac_end = display_name.find(')', mac_start)
-            if mac_end <= mac_start:
-                continue
-            option_mac = display_name[mac_start:mac_end].upper()
-            if option_mac != normalized_mac:
-                continue
-            if type and type.lower() not in display_name.lower():
+            if type and type.lower() not in option.get('DisplayName', '').lower():
                 continue
             return option
 

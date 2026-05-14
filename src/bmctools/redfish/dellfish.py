@@ -2,6 +2,13 @@ import json
 from typing import Optional
 from bmctools.redfish.fishapi import RedfishAPI
 
+
+def _canonical_mac(mac: str) -> str:
+    """Normalize a MAC string to canonical ``XX:XX:XX:XX:XX:XX`` (upper, colon-separated)."""
+    hex_only = mac.replace(':', '').replace('-', '').upper()
+    return ':'.join(hex_only[i:i + 2] for i in range(0, len(hex_only), 2))
+
+
 class DellFish:
     """
     Dell Redfish implementation.
@@ -57,31 +64,39 @@ class DellFish:
     
     def get_boot_options(self, nocache: bool = False) -> list:
         """Get all available boot options from the Dell system.
-        
+
+        Each option is enriched with a ``MACAddress`` field (canonical
+        ``XX:XX:XX:XX:XX:XX``) when the option's ``RelatedItem`` resolves to
+        a NIC. Options without a NIC association have no ``MACAddress``.
+
         Args:
             nocache: If True, force a fresh API call instead of using cached boot options
-            
+
         Returns:
             List of boot option dictionaries containing details for each boot device
-            
+
         Raises:
             ValueError: If boot options cannot be retrieved
         """
         # Return cached boot options if already fetched and cache is not disabled
         if not nocache and self.boot_options is not None:
             return self.boot_options
-        
+
         response = self.api.get(f'/redfish/v1/Systems/{self.system_id}/BootOptions')
         if response.status_code == 200:
             data = response.json()
             members = data.get('Members', [])
             boot_options = []
+            related_cache: dict = {}
             for member in members:
                 option_response = self.api.get(member['@odata.id'])
                 if option_response.status_code == 200:
                     option_data = option_response.json()
+                    mac = self._resolve_boot_option_mac(option_data, related_cache)
+                    if mac:
+                        option_data['MACAddress'] = mac
                     boot_options.append(option_data)
-            
+
             # Cache the boot options
             self.boot_options = boot_options
             return boot_options
@@ -89,82 +104,91 @@ class DellFish:
             raise ValueError(f'Failed to retrieve boot options, status code: {response.status_code}')
 
 
-    def get_boot_option_by_mac(self, mac_address: str, type: Optional[str] = None, nocache: bool = False) -> dict:
-        """Get a boot option by MAC address.
-        
+    def _resolve_boot_option_mac(self, option: dict, related_cache: dict) -> Optional[str]:
+        """Resolve the MAC address for a Dell boot option via its RelatedItem links.
+
         Args:
-            mac_address: MAC address to search for (format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX)
-            type: Optional boot option type to filter by (e.g., 'PXE')
-            nocache: If True, force a fresh API call instead of using cached boot options
-        
+            option: Boot option dict from the BMC.
+            related_cache: Per-call cache mapping ``@odata.id`` to parsed JSON,
+                so the same NetworkDeviceFunction isn't fetched twice when
+                multiple boot options reference it.
+
         Returns:
-            Dict containing the boot option data
-        
-        Raises:
-            ValueError: If no boot option is found with the specified MAC address or type
+            Canonical MAC string ``XX:XX:XX:XX:XX:XX`` or ``None`` if not found.
         """
-        # Normalize MAC address to uppercase without separators
-        def normalize(mac: str) -> str:
-            return mac.replace(':', '').replace('-', '').upper()
+        for rel in option.get('RelatedItem', []) or []:
+            rel_id = rel.get('@odata.id') if isinstance(rel, dict) else None
+            if not rel_id:
+                continue
 
-        target = normalize(mac_address)
-
-        boot_options = self.get_boot_options(nocache=nocache)
-
-        for option in boot_options:
-            # Dell exposes the NIC association in RelatedItem; follow those links
-            related = option.get('RelatedItem', []) or []
-            for rel in related:
-                rel_id = rel.get('@odata.id') if isinstance(rel, dict) else None
-                if not rel_id:
-                    continue
-
-                # Retrieve the NetworkDeviceFunction (or related) resource
+            if rel_id in related_cache:
+                rel_data = related_cache[rel_id]
+            else:
                 try:
                     rel_resp = self.api.get(rel_id)
                 except Exception:
                     rel_resp = None
-
                 if not rel_resp or rel_resp.status_code != 200:
-                    # some RelatedItem entries may point to containers; try expanding if present
+                    related_cache[rel_id] = None
                     continue
-
                 try:
                     rel_data = rel_resp.json()
                 except Exception:
+                    related_cache[rel_id] = None
                     continue
+                related_cache[rel_id] = rel_data
 
-                # Look for MAC address in common locations
-                mac_candidates = []
-                eth = rel_data.get('Ethernet') or {}
-                if isinstance(eth, dict):
-                    if eth.get('MACAddress'):
-                        mac_candidates.append(eth.get('MACAddress'))
-                    if eth.get('PermanentMACAddress'):
-                        mac_candidates.append(eth.get('PermanentMACAddress'))
+            if not rel_data:
+                continue
 
-                # Some Dell OEM data may include MAC under Oem -> Dell -> DellNIC -> ProductName or similar
-                try:
-                    oem_mac = (
-                        rel_data.get('Oem', {})
-                        .get('Dell', {})
-                        .get('DellNIC', {})
-                        .get('ProductName')
-                    )
-                    # ProductName sometimes includes the MAC at the end after a dash
-                    if oem_mac and isinstance(oem_mac, str) and ':' in oem_mac:
-                        # extract last token with colons
-                        token = oem_mac.split()[-1]
-                        mac_candidates.append(token)
-                except Exception:
-                    pass
+            eth = rel_data.get('Ethernet') or {}
+            if isinstance(eth, dict):
+                for key in ('MACAddress', 'PermanentMACAddress'):
+                    value = eth.get(key)
+                    if value:
+                        return _canonical_mac(value)
 
-                for cand in mac_candidates:
-                    if cand and normalize(cand) == target:
-                        # Check type if specified
-                        if type and option.get('BootOptionType') is not None and option.get('BootOptionType', '').lower() != type.lower():
-                            continue
-                        return option
+            # Dell OEM fallback: ProductName occasionally includes a colon-formatted MAC
+            try:
+                product_name = (
+                    rel_data.get('Oem', {})
+                    .get('Dell', {})
+                    .get('DellNIC', {})
+                    .get('ProductName')
+                )
+            except AttributeError:
+                product_name = None
+            if isinstance(product_name, str) and ':' in product_name:
+                token = product_name.split()[-1]
+                if len(token.replace(':', '')) == 12:
+                    return _canonical_mac(token)
+
+        return None
+
+
+    def get_boot_option_by_mac(self, mac_address: str, type: Optional[str] = None, nocache: bool = False) -> dict:
+        """Get a boot option by MAC address.
+
+        Args:
+            mac_address: MAC address to search for (format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX)
+            type: Optional boot option type to filter by (e.g., 'PXE')
+            nocache: If True, force a fresh API call instead of using cached boot options
+
+        Returns:
+            Dict containing the boot option data
+
+        Raises:
+            ValueError: If no boot option is found with the specified MAC address or type
+        """
+        target = _canonical_mac(mac_address)
+
+        for option in self.get_boot_options(nocache=nocache):
+            if option.get('MACAddress') != target:
+                continue
+            if type and option.get('BootOptionType') is not None \
+                    and option.get('BootOptionType', '').lower() != type.lower():
+                continue
+            return option
 
         raise ValueError(f'No boot option found with MAC address: {mac_address}' + (f' and type: {type}' if type else ''))
 
