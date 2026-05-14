@@ -2,6 +2,30 @@ import json
 from typing import Optional
 from bmctools.redfish.fishapi import RedfishAPI
 
+
+def _canonical_mac(mac: str) -> str:
+    """Normalize a MAC string to canonical ``XX:XX:XX:XX:XX:XX`` (upper, colon-separated)."""
+    hex_only = mac.replace(':', '').replace('-', '').upper()
+    return ':'.join(hex_only[i:i + 2] for i in range(0, len(hex_only), 2))
+
+
+def _mac_from_uefi_device_path(uefi_path: str) -> Optional[str]:
+    """Extract a MAC address from a UEFI device path of the form ``.../MAC(XXXXXXXXXXXX,...)``.
+
+    Returns the canonical MAC string, or ``None`` if not present.
+    """
+    if not uefi_path or '/MAC(' not in uefi_path:
+        return None
+    mac_start = uefi_path.find('/MAC(') + 5
+    mac_end = uefi_path.find(',', mac_start)
+    if mac_end <= mac_start:
+        return None
+    token = uefi_path[mac_start:mac_end]
+    if len(token.replace(':', '').replace('-', '')) != 12:
+        return None
+    return _canonical_mac(token)
+
+
 class AsusFish:
     """
     ASUS Redfish implementation.
@@ -54,7 +78,10 @@ class AsusFish:
 
         Tries the standard /BootOptions collection first. If that is not
         available (older models), falls back to parsing boot entries from
-        the SETUP006 BIOS attribute.
+        the SETUP006 BIOS attribute. Options from /BootOptions are enriched
+        with a ``MACAddress`` field (canonical ``XX:XX:XX:XX:XX:XX``) when
+        the ``UefiDevicePath`` encodes one. SETUP006 fallback entries don't
+        expose a UEFI path so they remain unenriched.
 
         Args:
             nocache: If True, bypass the cache and query the BMC directly.
@@ -79,6 +106,9 @@ class AsusFish:
                     option_response = self.api.get(member['@odata.id'])
                     if option_response.status_code == 200:
                         option_data = option_response.json()
+                        mac = _mac_from_uefi_device_path(option_data.get('UefiDevicePath', ''))
+                        if mac:
+                            option_data['MACAddress'] = mac
                         boot_options.append(option_data)
 
                 # Cache the boot options
@@ -95,43 +125,33 @@ class AsusFish:
             pass
 
         raise ValueError('Failed to retrieve boot options via /BootOptions or SETUP006')
-    
+
 
 
     def get_boot_option_by_mac(self, mac_address: str, type: Optional[str] = None, nocache: bool = False) -> dict:
         """Get a boot option by MAC address.
-        
+
         Args:
             mac_address: MAC address to search for (format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX)
             type: Optional boot option type to filter by (e.g., 'PXE')
             nocache: If True, force a fresh API call instead of using cached boot options
-        
+
         Returns:
             Dict containing the boot option data
-        
+
         Raises:
             ValueError: If no boot option is found with the specified MAC address or type
         """
-        # Normalize MAC address to uppercase without separators
-        normalized_mac = mac_address.replace(':', '').replace('-', '').upper()
-        
-        boot_options = self.get_boot_options(nocache=nocache)
-        
-        for option in boot_options:
-            uefi_path = option.get('UefiDevicePath', '')
-            # Extract MAC from UEFI device path (format: .../MAC(XXXXXXXXXXXX,0xX)/...)
-            if '/MAC(' in uefi_path:
-                # Find MAC address in the path
-                mac_start = uefi_path.find('/MAC(') + 5
-                mac_end = uefi_path.find(',', mac_start)
-                if mac_end > mac_start:
-                    path_mac = uefi_path[mac_start:mac_end].upper()
-                    if path_mac == normalized_mac:
-                        # Check type if specified
-                        if type and option.get('BootOptionType') is not None and option.get('BootOptionType', '').lower() != type.lower():
-                            continue
-                        return option
-        
+        target = _canonical_mac(mac_address)
+
+        for option in self.get_boot_options(nocache=nocache):
+            if option.get('MACAddress') != target:
+                continue
+            if type and option.get('BootOptionType') is not None \
+                    and option.get('BootOptionType', '').lower() != type.lower():
+                continue
+            return option
+
         raise ValueError(f'No boot option found with MAC address: {mac_address}' + (f' and type: {type}' if type else ''))
         
 
