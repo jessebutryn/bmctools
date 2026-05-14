@@ -281,12 +281,22 @@ class DellFish:
         if response.status_code in [200, 202, 204]:
             # Clear cached boot options as they may have changed
             self.boot_options = None
-            return {
+            result = {
                 'changed': True,
                 'needs_reboot': True,
                 'previous_boot_order': current_boot_order,
                 'boot_order': boot_order,
             }
+
+            # Stage a Dell OEM BIOS job so the new boot order is applied on
+            # the next reboot. Without this, the PATCH stages the change but
+            # nothing commits it.
+            try:
+                result['job_uri'] = self._create_dell_bios_job(endpoint)
+            except Exception as e:
+                result['job_creation_error'] = str(e)
+
+            return result
         else:
             error_detail = ""
             try:
