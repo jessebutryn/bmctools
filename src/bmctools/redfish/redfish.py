@@ -99,6 +99,9 @@ class Redfish:
         if manufacturer in ['cisco', 'cisco systems inc', 'cisco systems inc.']:
             from bmctools.redfish.ciscofish import CiscoFish
             return CiscoFish(self.api)
+        if manufacturer in ['aivres', 'inspur', 'inspur electronic information industry co., ltd.']:
+            from bmctools.redfish.aivresfish import AivresFish
+            return AivresFish(self.api)
         else:
             return None
         

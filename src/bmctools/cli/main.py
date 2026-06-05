@@ -24,7 +24,7 @@ Environment Variables:
   BMC_HOST          BMC IP address or hostname
   BMC_USERNAME      BMC username
   BMC_PASSWORD      BMC password
-  BMC_MANUFACTURER  Force manufacturer (asus, dell, supermicro, gigabyte, cisco)
+  BMC_MANUFACTURER  Force manufacturer (asus, dell, supermicro, gigabyte, cisco, aivres)
   BMC_INSECURE      Disable SSL verification (1, true, yes)
   NO_COLOR          Disable colored output
 
@@ -62,7 +62,7 @@ For more information, visit: https://github.com/yourusername/bmctools
     parser.add_argument('--secure', action='store_false', dest='insecure',
                        help='Enable SSL verification')
     parser.add_argument('-m', '--manufacturer',
-                       choices=['asus', 'dell', 'supermicro', 'gigabyte', 'cisco'],
+                       choices=['asus', 'dell', 'supermicro', 'gigabyte', 'cisco', 'aivres'],
                        help='Force manufacturer (env: BMC_MANUFACTURER)')
 
     parser.add_argument('-v', '--verbose', action='store_true',
