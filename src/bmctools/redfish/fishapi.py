@@ -1,12 +1,18 @@
 import requests
 import json
-from typing import Optional
+from typing import Optional, Tuple, Union
+
+# (connect, read) timeout in seconds applied to every request. The read
+# timeout caps the gap between bytes from the BMC: without it, an
+# unresponsive iDRAC (e.g. mid-reboot) leaves requests blocked indefinitely.
+DEFAULT_TIMEOUT: Tuple[int, int] = (10, 60)
 
 class RedfishAPI:
     """
     Redfish API client for interacting with the Redfish service.
     """
-    def __init__(self, ip: str, user: str, password: str, verify_ssl: bool = True) -> None:
+    def __init__(self, ip: str, user: str, password: str, verify_ssl: bool = True,
+                 timeout: Union[int, float, Tuple[int, int]] = DEFAULT_TIMEOUT) -> None:
         """Initialize the Redfish API client and establish a session.
 
         Args:
@@ -14,10 +20,13 @@ class RedfishAPI:
             user: BMC username.
             password: BMC password.
             verify_ssl: If True, verify SSL certificates (default: True).
+            timeout: Request timeout in seconds. Either a single value applied
+                to both connect and read, or a ``(connect, read)`` tuple.
         """
         self.ip = ip
         self.user = user
         self.password = password
+        self.timeout = timeout
         self.base_url = f"https://{ip}"
         self.session = requests.Session()
         self.session.auth = (user, password)
@@ -52,7 +61,7 @@ class RedfishAPI:
             HTTP response object.
         """
         url = self.base_url + endpoint
-        response = self.session.get(url, params=params, verify=self.verify_ssl)
+        response = self.session.get(url, params=params, verify=self.verify_ssl, timeout=self.timeout)
         return response
 
 
@@ -69,7 +78,7 @@ class RedfishAPI:
         url = self.base_url + endpoint
         if data:
             data = json.dumps(data)
-        response = self.session.post(url, data=data, verify=self.verify_ssl)
+        response = self.session.post(url, data=data, verify=self.verify_ssl, timeout=self.timeout)
         return response
 
 
@@ -86,7 +95,7 @@ class RedfishAPI:
         url = self.base_url + endpoint
         if data:
             data = json.dumps(data)
-        response = self.session.put(url, data=data, verify=self.verify_ssl)
+        response = self.session.put(url, data=data, verify=self.verify_ssl, timeout=self.timeout)
         return response
 
 
@@ -104,7 +113,7 @@ class RedfishAPI:
         url = self.base_url + endpoint
         if data:
             data = json.dumps(data)
-        response = self.session.patch(url, data=data, headers=headers, verify=self.verify_ssl)
+        response = self.session.patch(url, data=data, headers=headers, verify=self.verify_ssl, timeout=self.timeout)
         return response
 
 
@@ -118,7 +127,7 @@ class RedfishAPI:
             HTTP response object.
         """
         url = self.base_url + endpoint
-        response = self.session.delete(url, verify=self.verify_ssl)
+        response = self.session.delete(url, verify=self.verify_ssl, timeout=self.timeout)
         return response
 
 
@@ -147,7 +156,8 @@ class RedfishAPI:
                     url,
                     files=files,
                     data=data,
-                    verify=self.verify_ssl
+                    verify=self.verify_ssl,
+                    timeout=self.timeout
                 )
         finally:
             # Restore Content-Type header
@@ -191,7 +201,8 @@ class RedfishAPI:
                 response = self.session.post(
                     url,
                     files=files,
-                    verify=self.verify_ssl
+                    verify=self.verify_ssl,
+                    timeout=self.timeout
                 )
         finally:
             if original_content_type:
@@ -213,7 +224,7 @@ class RedfishAPI:
                 session_url,
                 json=payload,
                 verify=self.verify_ssl,
-                timeout=10
+                timeout=self.timeout
             )
             
             if response.status_code == 201:
