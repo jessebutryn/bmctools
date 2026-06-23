@@ -34,12 +34,21 @@ class IpmiTool:
 
 
     def _build_cmd(self, command: str, interface: str, cipher_suite: Optional[int] = None) -> list:
-        """Build the ipmitool command list."""
+        """Build the ipmitool command list.
+
+        Connection values (host/user/password) are passed verbatim. They must
+        NOT be run through ``shlex.quote``: the command is executed with
+        ``shell=False``, so there is no shell to strip the quotes ``shlex.quote``
+        adds. Quoting a password containing shell metacharacters (e.g. ``@#$``)
+        would otherwise embed literal quotes into the credential ipmitool
+        receives, breaking authentication and inflating the byte length past the
+        16-byte IPMI v1.5 limit.
+        """
         cmd = [
             "ipmitool",
-            "-H", shlex.quote(self.host),
-            "-U", shlex.quote(self.user),
-            "-P", shlex.quote(self.password),
+            "-H", self.host,
+            "-U", self.user,
+            "-P", self.password,
             "-I", interface,
         ]
         if cipher_suite is not None:
