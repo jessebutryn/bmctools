@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- `ipmi/ipmitool.py`: stopped wrapping `-H/-U/-P` values in `shlex.quote()`. Commands run with `shell=False`, so there is no shell to remove the quotes; for passwords containing shell metacharacters (e.g. `@`, `#`, `$`) this embedded literal quote characters into the credential ipmitool received, breaking authentication on every interface and pushing the password past the 16-byte IPMI v1.5 limit (`lan: password is longer than 16 bytes`). Connection values are now passed verbatim.
+
+---
+
 ## [0.1.6] - 2026-03-21
 
 ### Added
