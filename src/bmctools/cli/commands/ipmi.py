@@ -45,7 +45,8 @@ def setup_power_commands(parser: argparse.ArgumentParser) -> None:
     subparsers.add_parser('status', help='Get power status')
     subparsers.add_parser('on', help='Power on system')
     subparsers.add_parser('off', help='Power off system')
-    subparsers.add_parser('reset', help='Hard reset system')
+    subparsers.add_parser('reset', help='Hard reset system (powers on if off)')
+    subparsers.add_parser('cycle', help='Power cycle system / cold reboot (powers on if off)')
 
 
 def setup_bmc_commands(parser: argparse.ArgumentParser) -> None:
@@ -111,6 +112,14 @@ def handle_power_reset(args: argparse.Namespace) -> dict:
     print_verbose("Resetting system...", args)
     result = ipmi.power_reset()
     return {'message': 'Power reset command sent', 'result': result}
+
+
+def handle_power_cycle(args: argparse.Namespace) -> dict:
+    """Handle 'ipmi power cycle' command."""
+    ipmi = establish_ipmi_connection(args)
+    print_verbose("Power cycling system...", args)
+    result = ipmi.power_cycle()
+    return {'message': 'Power cycle command sent', 'result': result}
 
 
 # BMC Management Handlers
@@ -219,6 +228,7 @@ def dispatch_power(args: argparse.Namespace) -> int:
         'on': handle_power_on,
         'off': handle_power_off,
         'reset': handle_power_reset,
+        'cycle': handle_power_cycle,
     }
 
     if action in handlers:

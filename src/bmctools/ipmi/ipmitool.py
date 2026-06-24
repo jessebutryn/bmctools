@@ -120,10 +120,31 @@ class IpmiTool:
     def power_reset(self) -> str:
         """Issue a hard power-reset command.
 
+        ``power reset`` only works when the system is already on. If the system
+        is off, the intent behind a reset is still to bring the machine up, so
+        a power-on is issued instead.
+
         Returns:
             String output from ipmitool.
         """
-        return self.ipmitool_command("power reset")
+        if "on" in self.power_status().lower():
+            return self.ipmitool_command("power reset")
+        return self.power_on()
+
+
+    def power_cycle(self) -> str:
+        """Issue a power-cycle command (cold reboot).
+
+        ``power cycle`` powers the system off and then back on. As with
+        ``power reset``, it only works when the system is already on, so if the
+        system is off a power-on is issued instead.
+
+        Returns:
+            String output from ipmitool.
+        """
+        if "on" in self.power_status().lower():
+            return self.ipmitool_command("power cycle")
+        return self.power_on()
 
 
     def bmc_reset_warm(self) -> str:
