@@ -1,3 +1,5 @@
 """BMCTools CLI module."""
 
-__version__ = '0.1.12'
+from bmctools import __version__
+
+__all__ = ['__version__']
