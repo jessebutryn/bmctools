@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.1.14] - 2026-06-24
+
+### Fixed
+- `cli/__init__.py`: `--version` now reports the correct version. It re-exports `__version__` from the root `bmctools` package instead of defining its own copy, which had been left at `0.1.12` while the release bump only updated `setup.py` and `bmctools/__init__.py`. This collapses the CLI version to a single source of truth so it can no longer drift.
+
+---
+
 ## [0.1.13] - 2026-06-23
 
 ### Fixed
