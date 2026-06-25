@@ -102,18 +102,28 @@ class IpmiTool:
     def power_off(self) -> str:
         """Issue a hard power-off command.
 
+        If the system is already off, the desired state is already met, so no
+        command is issued.
+
         Returns:
             String output from ipmitool.
         """
+        if "off" in self.power_status().lower():
+            return "Chassis Power is already off"
         return self.ipmitool_command("power off")
 
 
     def power_on(self) -> str:
         """Issue a power-on command.
 
+        If the system is already on, the desired state is already met, so no
+        command is issued.
+
         Returns:
             String output from ipmitool.
         """
+        if "on" in self.power_status().lower():
+            return "Chassis Power is already on"
         return self.ipmitool_command("power on")
 
 
