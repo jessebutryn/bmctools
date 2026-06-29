@@ -268,14 +268,24 @@ class DellFish:
                 'boot_order': boot_order,
             }
 
-        # Dell uses the Settings endpoint for boot configuration changes
+        # Dell uses the Settings endpoint for boot configuration changes.
+        # Including @Redfish.SettingsApplyTime tells iDRAC to commit a config
+        # job automatically on the next reset. This is the standard Redfish
+        # mechanism and works on both iDRAC 9 and iDRAC 10 (the legacy OEM
+        # Jobs POST does not reliably create a job on iDRAC 10).
         endpoint = '/redfish/v1/Systems/System.Embedded.1/Settings'
 
         payload = {
             "Boot": {
                 "BootOrder": boot_order
+            },
+            "@Redfish.SettingsApplyTime": {
+                "ApplyTime": "OnReset"
             }
         }
+
+        # Snapshot existing jobs so we can identify the one iDRAC creates.
+        jobs_before = self._list_dell_job_ids()
 
         response = self.api.patch(endpoint, data=payload)
         if response.status_code in [200, 202, 204]:
@@ -288,13 +298,9 @@ class DellFish:
                 'boot_order': boot_order,
             }
 
-            # Stage a Dell OEM BIOS job so the new boot order is applied on
-            # the next reboot. Without this, the PATCH stages the change but
-            # nothing commits it.
-            try:
-                result['job_uri'] = self._create_dell_bios_job(endpoint)
-            except Exception as e:
-                result['job_creation_error'] = str(e)
+            # Capture the config job created by SettingsApplyTime; fall back to
+            # the legacy OEM job POST if the firmware did not auto-create one.
+            self._attach_bios_job(result, response, endpoint, jobs_before)
 
             return result
         else:
@@ -339,7 +345,7 @@ class DellFish:
 
         result = self.set_boot_order(new_order)
 
-        return {
+        out = {
             'changed': result['changed'],
             'needs_reboot': result['needs_reboot'],
             'promoted': boot_ref,
@@ -351,6 +357,13 @@ class DellFish:
                        if result['changed'] else
                        f'{boot_ref} ({option.get("DisplayName", "")}) is already first in boot order'
         }
+        # Surface job creation outcome so a failed/staged-but-uncommitted job
+        # is visible to the caller.
+        if 'job_uri' in result:
+            out['job_uri'] = result['job_uri']
+        if 'job_creation_error' in result:
+            out['job_creation_error'] = result['job_creation_error']
+        return out
 
     def setup_pxe_boot(self, mac_address: str, protocol: str = 'IPv4',
                        reboot: bool = True) -> dict:
@@ -778,6 +791,57 @@ class DellFish:
             raise ValueError(f'Failed to toggle local iDRAC access, status: {resp.status_code}, detail: {detail}')
 
 
+    def _list_dell_job_ids(self) -> set:
+        """Return the set of current Dell OEM job URIs (best effort).
+
+        Used to detect the config job iDRAC creates from a Settings PATCH
+        carrying ``@Redfish.SettingsApplyTime`` by diffing before/after.
+        """
+        mgr_id = self._get_manager_id()
+        resp = self.api.get(f'/redfish/v1/Managers/{mgr_id}/Oem/Dell/Jobs')
+        if resp.status_code != 200:
+            return set()
+        members = resp.json().get('Members', [])
+        return {m.get('@odata.id', '') for m in members if m.get('@odata.id')}
+
+    def _attach_bios_job(self, result: dict, patch_response, target_settings_uri: str,
+                         jobs_before: set = None) -> None:
+        """Record the config job that applies staged BIOS/boot settings.
+
+        When a Settings PATCH includes ``@Redfish.SettingsApplyTime``, iDRAC
+        auto-creates the config job (iDRAC 9 and 10). It may report that job in
+        the ``Location`` header, but iDRAC 10 does not always do so, so we also
+        diff the Jobs collection against a pre-PATCH snapshot. Only if neither
+        surfaces a job do we fall back to the legacy OEM Jobs POST (older
+        firmware); that POST is rejected on iDRAC 10 for these Settings URIs.
+
+        Mutates ``result`` in place, setting ``job_uri`` on success or
+        ``job_creation_error`` on failure.
+        """
+        # 1) Job reported directly in the PATCH Location header.
+        loc = patch_response.headers.get('Location') if hasattr(patch_response, 'headers') else None
+        if loc and ('JID_' in loc or 'RID_' in loc):
+            result['job_uri'] = loc
+            return
+
+        # 2) Job iDRAC created from @Redfish.SettingsApplyTime, found by diffing
+        #    the Jobs collection (covers firmware that returns no Location).
+        if jobs_before is not None:
+            new_ids = self._list_dell_job_ids() - jobs_before
+            if len(new_ids) == 1:
+                result['job_uri'] = next(iter(new_ids))
+                return
+            if new_ids:
+                # Multiple new jobs appeared; report them all rather than guess.
+                result['job_uri'] = sorted(new_ids)
+                return
+
+        # 3) Fallback: explicitly create the job the legacy way.
+        try:
+            result['job_uri'] = self._create_dell_bios_job(target_settings_uri)
+        except Exception as e:
+            result['job_creation_error'] = str(e)
+
     def _create_dell_bios_job(self, target_settings_uri: str) -> str:
         """Create a Dell OEM BIOS job to apply staged BIOS attributes on reboot.
 
@@ -1057,10 +1121,15 @@ class DellFish:
                 f"PxeDev{target_slot}EnDis": "Enabled",
                 f"PxeDev{target_slot}Interface": nic_id,
                 f"PxeDev{target_slot}Protocol": protocol,
+            },
+            "@Redfish.SettingsApplyTime": {
+                "ApplyTime": "OnReset"
             }
         }
 
         settings_path = f'/redfish/v1/Systems/{self.system_id}/Bios/Settings'
+        # Snapshot existing jobs so we can identify the one iDRAC creates.
+        jobs_before = self._list_dell_job_ids()
         response = self.api.patch(settings_path, data=payload)
         if response.status_code in [200, 202, 204]:
             result = {
@@ -1073,14 +1142,9 @@ class DellFish:
                 )
             }
 
-            # Attempt to create a Dell OEM BIOS job so the staged BIOS
-            # attributes are applied on the next reboot. If job creation
-            # fails, return the staged result but include the error.
-            try:
-                job_uri = self._create_dell_bios_job(settings_path)
-                result['job_uri'] = job_uri
-            except Exception as e:
-                result['job_creation_error'] = str(e)
+            # Capture the config job created by SettingsApplyTime; fall back to
+            # the legacy OEM job POST if the firmware did not auto-create one.
+            self._attach_bios_job(result, response, settings_path, jobs_before)
 
             return result
         else:
