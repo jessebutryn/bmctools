@@ -24,6 +24,15 @@ class Redfish:
         self.manufacturer = manufacturer.lower() if manufacturer else self.get_manufacturer()
         self.manufacturer_class = self.instantiate_manufacturer_class(self.manufacturer)
 
+        # Some platforms expose multiple ComputerSystems (e.g. an HGX GPU
+        # baseboard alongside the host). Manufacturer classes that resolve the
+        # primary compute system themselves expose it as ``system_id``; adopt
+        # it so standard-Redfish methods here (boot override, BIOS, inventory)
+        # target the same system as the manufacturer-specific ones.
+        mc_system_id = getattr(self.manufacturer_class, 'system_id', None)
+        if mc_system_id:
+            self.system_id = mc_system_id
+
 
     def get_system_id(self) -> Optional[str]:
         """Get the system ID from the Redfish Systems collection.
@@ -96,6 +105,9 @@ class Redfish:
         if manufacturer in ['gigabyte', 'giga computing']:
             from bmctools.redfish.gigafish import GigaFish
             return GigaFish(self.api)
+        if manufacturer in ['hpe', 'hp', 'hewlett packard enterprise', 'hewlett-packard enterprise', 'hewlett packard']:
+            from bmctools.redfish.hpefish import HpeFish
+            return HpeFish(self.api)
         if manufacturer in ['cisco', 'cisco systems inc', 'cisco systems inc.']:
             from bmctools.redfish.ciscofish import CiscoFish
             return CiscoFish(self.api)
