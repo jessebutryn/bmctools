@@ -1,12 +1,31 @@
 import json
+import re
 from typing import Optional
 from bmctools.redfish.fishapi import RedfishAPI
+
+
+# Matches a colon- or dash-separated MAC address embedded in free text, e.g. the
+# DisplayName "PXE Device 1: ... - 40:5B:7F:3C:98:A0 - IPv4".
+_MAC_IN_TEXT_RE = re.compile(r'\b([0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5})\b')
 
 
 def _canonical_mac(mac: str) -> str:
     """Normalize a MAC string to canonical ``XX:XX:XX:XX:XX:XX`` (upper, colon-separated)."""
     hex_only = mac.replace(':', '').replace('-', '').upper()
     return ':'.join(hex_only[i:i + 2] for i in range(0, len(hex_only), 2))
+
+
+def _mac_from_display_name(display_name: Optional[str]) -> Optional[str]:
+    """Extract a canonical MAC address embedded in a boot option's DisplayName.
+
+    Some iDRAC versions omit ``RelatedItem`` links on boot options but still
+    include the NIC MAC in the human-readable DisplayName. Returns the canonical
+    MAC string or ``None`` if no MAC is present.
+    """
+    if not isinstance(display_name, str):
+        return None
+    match = _MAC_IN_TEXT_RE.search(display_name)
+    return _canonical_mac(match.group(1)) if match else None
 
 
 class DellFish:
@@ -93,6 +112,10 @@ class DellFish:
                 if option_response.status_code == 200:
                     option_data = option_response.json()
                     mac = self._resolve_boot_option_mac(option_data, related_cache)
+                    # Fallback: some iDRAC versions omit RelatedItem links but
+                    # embed the NIC MAC in the DisplayName.
+                    if not mac:
+                        mac = _mac_from_display_name(option_data.get('DisplayName'))
                     if mac:
                         option_data['MACAddress'] = mac
                     boot_options.append(option_data)
