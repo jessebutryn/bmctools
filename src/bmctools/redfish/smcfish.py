@@ -1,4 +1,5 @@
 
+import json
 from typing import Optional
 
 from bmctools.redfish.fishapi import RedfishAPI
@@ -270,3 +271,92 @@ class SMCFish:
             f'No boot option found with MAC address: {mac_address}'
             + (f' and type: {type}' if type else '')
         )
+
+
+    # ── KCS (OS-to-BMC in-band IPMI passthrough) control ──────────────
+
+    def set_kcs_state(self, enabled: bool) -> dict:
+        """Enable or disable the KCS (OS-to-BMC in-band IPMI passthrough) interface.
+
+        Supermicro has no direct enable/disable flag for KCS; instead the KCS
+        interface *privilege* is raised or lowered. ``Administrator`` grants the
+        host OS full in-band control (enabled), while ``Operator`` restricts it
+        (effectively disabling privileged OS-to-BMC passthrough).
+
+        Two endpoint generations are tried in order (a ``404`` on the first
+        advances to the second):
+          1. ``/redfish/v1/Managers/{mgr}/KCSInterface/``
+          2. ``/redfish/v1/Managers/{mgr}/Oem/Supermicro/KCSInterface/``
+
+        Args:
+            enabled: ``True`` to enable KCS (Administrator privilege), ``False``
+                to disable it (Operator privilege).
+
+        Returns:
+            Dict describing the applied change (endpoint, privilege, message).
+
+        Raises:
+            ValueError: If the change could not be applied (e.g. a license is
+                required, or no endpoint accepted the change).
+        """
+        from bmctools.redfish.kcs import patch_kcs_endpoints
+
+        mgr_id = self._get_manager_id()
+        privilege = 'Administrator' if enabled else 'Operator'
+        payload = {'Privilege': privilege}
+
+        endpoints_payloads = [
+            (f'/redfish/v1/Managers/{mgr_id}/KCSInterface/', payload),
+            (f'/redfish/v1/Managers/{mgr_id}/Oem/Supermicro/KCSInterface/', payload),
+        ]
+
+        endpoint = patch_kcs_endpoints(self.api, endpoints_payloads, vendor='supermicro')
+
+        return {
+            'manufacturer': 'supermicro',
+            'kcs_enabled': enabled,
+            'action': 'enabled' if enabled else 'disabled',
+            'value': 'Enabled' if enabled else 'Disabled',
+            'privilege': privilege,
+            'endpoint': endpoint,
+            'message': f'KCS interface {"enabled" if enabled else "disabled"} '
+                       f'(Privilege={privilege})',
+        }
+
+    def get_kcs_state(self) -> dict:
+        """Get the current KCS (OS-to-BMC passthrough) privilege on the BMC.
+
+        Reads the KCS interface ``Privilege`` (``/KCSInterface/`` first, then
+        the OEM ``/Oem/Supermicro/KCSInterface/`` path). ``Administrator`` is
+        reported as enabled; any lower privilege as disabled.
+
+        Returns:
+            Dict with ``kcs_enabled`` (bool), the raw privilege value, and the
+            endpoint it was read from.
+
+        Raises:
+            ValueError: If the privilege cannot be read.
+        """
+        from bmctools.redfish.kcs import read_kcs_endpoint
+
+        mgr_id = self._get_manager_id()
+        endpoints = [
+            f'/redfish/v1/Managers/{mgr_id}/KCSInterface/',
+            f'/redfish/v1/Managers/{mgr_id}/Oem/Supermicro/KCSInterface/',
+        ]
+
+        endpoint, data = read_kcs_endpoint(self.api, endpoints)
+        privilege = data.get('Privilege')
+        if privilege is None:
+            raise ValueError(
+                f'KCS state unavailable: Privilege not present at {endpoint}.'
+            )
+
+        enabled = privilege == 'Administrator'
+        return {
+            'manufacturer': 'supermicro',
+            'kcs_enabled': enabled,
+            'value': 'Enabled' if enabled else 'Disabled',
+            'privilege': privilege,
+            'endpoint': endpoint,
+        }

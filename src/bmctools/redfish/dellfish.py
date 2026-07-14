@@ -814,6 +814,100 @@ class DellFish:
             raise ValueError(f'Failed to toggle local iDRAC access, status: {resp.status_code}, detail: {detail}')
 
 
+    def set_kcs_state(self, enabled: bool) -> dict:
+        """Enable or disable the KCS (OS-to-BMC in-band IPMI passthrough) interface.
+
+        Dell controls in-band OS access through the iDRAC attribute
+        ``LocalSecurity.1.LocalConfig``: ``Enabled`` permits OS-side control,
+        ``Disabled`` restricts the iDRAC to out-of-band management only.
+
+        Two endpoint generations are tried in order (a ``404`` on the first
+        advances to the second):
+          1. iDRAC 9: ``/redfish/v1/Managers/{mgr}/Attributes``
+          2. iDRAC 10: ``/redfish/v1/Managers/{mgr}/Oem/Dell/DellAttributes/{mgr}``
+
+        Args:
+            enabled: ``True`` to enable KCS (OS-to-BMC passthrough), ``False`` to
+                disable it.
+
+        Returns:
+            Dict describing the applied change (endpoint, value, message).
+
+        Raises:
+            ValueError: If the change could not be applied on any endpoint.
+        """
+        from bmctools.redfish.kcs import patch_kcs_endpoints
+
+        mgr_id = self._get_manager_id()
+        value = 'Enabled' if enabled else 'Disabled'
+
+        idrac9_payload = {'Attributes': {'LocalSecurity.1.LocalConfig': value}}
+        idrac10_payload = {
+            'Attributes': {
+                'LocalSecurity.1.LocalConfig': value,
+                'LocalSecurity.1.PrebootConfig': 'Enabled',
+                'Roles.4.Name': 'Custom',
+                'Roles.4.Privileges': 113,
+                'Users.7.Role': 'Custom',
+            }
+        }
+
+        endpoints_payloads = [
+            (f'/redfish/v1/Managers/{mgr_id}/Attributes', idrac9_payload),
+            (f'/redfish/v1/Managers/{mgr_id}/Oem/Dell/DellAttributes/{mgr_id}', idrac10_payload),
+        ]
+
+        endpoint = patch_kcs_endpoints(self.api, endpoints_payloads, vendor='dell')
+
+        return {
+            'manufacturer': 'dell',
+            'kcs_enabled': enabled,
+            'action': 'enabled' if enabled else 'disabled',
+            'attribute': 'LocalSecurity.1.LocalConfig',
+            'value': value,
+            'endpoint': endpoint,
+            'message': f'KCS interface {"enabled" if enabled else "disabled"} '
+                       f'(LocalSecurity.1.LocalConfig={value})',
+        }
+
+    def get_kcs_state(self) -> dict:
+        """Get the current KCS (OS-to-BMC passthrough) state on the iDRAC.
+
+        Reads ``LocalSecurity.1.LocalConfig`` from the iDRAC attributes
+        (iDRAC 9 ``/Attributes`` endpoint first, then the iDRAC 10 OEM
+        ``DellAttributes`` endpoint).
+
+        Returns:
+            Dict with ``kcs_enabled`` (bool), the raw attribute value, and the
+            endpoint it was read from.
+
+        Raises:
+            ValueError: If the attribute cannot be read.
+        """
+        from bmctools.redfish.kcs import read_kcs_endpoint
+
+        mgr_id = self._get_manager_id()
+        endpoints = [
+            f'/redfish/v1/Managers/{mgr_id}/Attributes',
+            f'/redfish/v1/Managers/{mgr_id}/Oem/Dell/DellAttributes/{mgr_id}',
+        ]
+
+        endpoint, data = read_kcs_endpoint(self.api, endpoints)
+        value = data.get('Attributes', {}).get('LocalSecurity.1.LocalConfig')
+        if value is None:
+            raise ValueError(
+                'KCS state unavailable: LocalSecurity.1.LocalConfig not present '
+                f'at {endpoint}.'
+            )
+
+        return {
+            'manufacturer': 'dell',
+            'kcs_enabled': value == 'Enabled',
+            'attribute': 'LocalSecurity.1.LocalConfig',
+            'value': value,
+            'endpoint': endpoint,
+        }
+
     def _list_dell_job_ids(self) -> set:
         """Return the set of current Dell OEM job URIs (best effort).
 

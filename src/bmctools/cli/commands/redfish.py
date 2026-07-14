@@ -46,6 +46,10 @@ def setup_redfish_commands(parser: argparse.ArgumentParser) -> None:
     bios_parser = subparsers.add_parser('bios', help='BIOS settings management')
     setup_bios_commands(bios_parser)
 
+    # KCS (OS-to-BMC in-band IPMI passthrough) commands
+    kcs_parser = subparsers.add_parser('kcs', help='KCS (OS-to-BMC in-band IPMI passthrough) control')
+    setup_kcs_commands(kcs_parser)
+
     # Raw Redfish API access
     raw_parser = subparsers.add_parser('raw', help='Raw Redfish API request')
     raw_parser.add_argument('uri', help='Redfish URI path (e.g., /redfish/v1/Systems)')
@@ -190,6 +194,27 @@ def setup_bios_commands(parser: argparse.ArgumentParser) -> None:
     p.add_argument('-a', '--attrs', required=True,
                   help='BIOS attributes as key=value pairs, comma-separated '
                        '(e.g., "IPV4PXE=Enabled,IPV6PXE=Disabled")')
+
+
+def setup_kcs_commands(parser: argparse.ArgumentParser) -> None:
+    """Setup KCS (OS-to-BMC in-band IPMI passthrough) subcommands.
+
+    Supported on Dell (iDRAC) and Supermicro. ASUS and other manufacturers are
+    not supported and will report NotImplementedError.
+    """
+    subparsers = parser.add_subparsers(dest='kcs_action', help='KCS action')
+
+    # disable
+    subparsers.add_parser('disable',
+                          help='Disable KCS / OS-to-BMC passthrough (BMC accessible out-of-band only)')
+
+    # enable
+    subparsers.add_parser('enable',
+                          help='Enable KCS / OS-to-BMC passthrough')
+
+    # status
+    subparsers.add_parser('status',
+                          help='Show the current KCS interface state')
 
 
 def setup_dell_commands(parser: argparse.ArgumentParser) -> None:
@@ -432,6 +457,28 @@ def handle_bios_set(args: argparse.Namespace) -> dict:
         'message': 'BIOS settings updated (will apply on next reboot)',
         'attributes': attributes,
     }
+
+
+# KCS Management Handlers
+
+def handle_kcs_disable(args: argparse.Namespace) -> dict:
+    """Handle 'redfish kcs disable' command."""
+    rf = establish_redfish_connection(args)
+    print_verbose("Disabling KCS (OS-to-BMC passthrough)...", args)
+    return rf.set_kcs_state(False)
+
+
+def handle_kcs_enable(args: argparse.Namespace) -> dict:
+    """Handle 'redfish kcs enable' command."""
+    rf = establish_redfish_connection(args)
+    print_verbose("Enabling KCS (OS-to-BMC passthrough)...", args)
+    return rf.set_kcs_state(True)
+
+
+def handle_kcs_status(args: argparse.Namespace) -> dict:
+    """Handle 'redfish kcs status' command."""
+    rf = establish_redfish_connection(args)
+    return rf.get_kcs_state()
 
 
 # Firmware Management Handlers
@@ -720,6 +767,8 @@ def dispatch(args: argparse.Namespace) -> int:
         return dispatch_tpm(args)
     elif group == 'bios':
         return dispatch_bios(args)
+    elif group == 'kcs':
+        return dispatch_kcs(args)
     elif group == 'raw':
         return wrap_command(handle_raw, args)
     elif group == 'dell':
@@ -813,6 +862,22 @@ def dispatch_bios(args: argparse.Namespace) -> int:
         return wrap_command(handlers[action], args)
     else:
         print(f"Error: Unknown BIOS action: {action}", file=sys.stderr)
+        return 1
+
+
+def dispatch_kcs(args: argparse.Namespace) -> int:
+    """Dispatch KCS command."""
+    action = args.kcs_action
+    handlers = {
+        'disable': handle_kcs_disable,
+        'enable': handle_kcs_enable,
+        'status': handle_kcs_status,
+    }
+
+    if action in handlers:
+        return wrap_command(handlers[action], args)
+    else:
+        print(f"Error: Unknown KCS action: {action}", file=sys.stderr)
         return 1
 
 
