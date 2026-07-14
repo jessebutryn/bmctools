@@ -407,6 +407,52 @@ class Redfish:
             raise NotImplementedError(f'get_network_interfaces not implemented for manufacturer: {self.manufacturer}')
 
 
+    # ── KCS control (OS-to-BMC in-band IPMI passthrough) ──────────────
+
+    def set_kcs_state(self, enabled: bool) -> dict:
+        """Enable or disable the KCS (OS-to-BMC in-band IPMI passthrough) interface.
+
+        Disabling KCS restricts in-band OS-to-BMC control so the BMC can only be
+        managed out-of-band. The concrete mechanism is manufacturer-specific
+        (Dell toggles an iDRAC attribute; Supermicro lowers the KCS interface
+        privilege). ASUS and other manufacturers are not supported.
+
+        Args:
+            enabled: ``True`` to enable KCS, ``False`` to disable it.
+
+        Returns:
+            Dict describing the applied change.
+
+        Raises:
+            NotImplementedError: If not supported for the detected manufacturer.
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.set_kcs_state(enabled)
+        except AttributeError:
+            raise NotImplementedError(f'KCS control not implemented for manufacturer: {self.manufacturer}')
+
+
+    def get_kcs_state(self) -> dict:
+        """Get the current KCS (OS-to-BMC passthrough) state.
+
+        Returns:
+            Dict with ``kcs_enabled`` (bool) and manufacturer-specific detail.
+
+        Raises:
+            NotImplementedError: If not supported for the detected manufacturer.
+        """
+        if not self.manufacturer_class:
+            raise NotImplementedError(f'No manufacturer-specific implementation available for: {self.manufacturer}')
+
+        try:
+            return self.manufacturer_class.get_kcs_state()
+        except AttributeError:
+            raise NotImplementedError(f'KCS control not implemented for manufacturer: {self.manufacturer}')
+
+
     # ── Boot Source Override (standard Redfish, all manufacturers) ────
 
     def get_boot_override(self) -> dict:

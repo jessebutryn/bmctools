@@ -197,6 +197,43 @@ bmctools redfish raw /redfish/v1/Chassis
 bmctools redfish raw /redfish/v1/Managers/1
 ```
 
+### KCS Control (OS-to-BMC passthrough)
+
+Disable the KCS interface — the in-band IPMI passthrough that lets the host OS
+talk to the BMC — so the BMC can only be managed out-of-band. Applied entirely
+over Redfish; the manufacturer is auto-detected.
+
+```bash
+bmctools redfish kcs <command>
+```
+
+| Command | Description |
+|---|---|
+| `disable` | Disable KCS / OS-to-BMC passthrough (BMC accessible out-of-band only) |
+| `enable` | Enable KCS / OS-to-BMC passthrough |
+| `status` | Show the current KCS interface state |
+
+**Supported manufacturers:**
+
+| Manufacturer | Mechanism |
+|---|---|
+| Dell (iDRAC) | Sets iDRAC attribute `LocalSecurity.1.LocalConfig` to `Enabled`/`Disabled` (tries the iDRAC 9 `Attributes` endpoint, then the iDRAC 10 OEM `DellAttributes` endpoint). |
+| Supermicro | Lowers/raises the KCS interface privilege — `Administrator` (enabled) vs `Operator` (disabled). May require a BMC license (SKU). |
+| ASUS and others | Not supported (reported as `NotImplementedError`). |
+
+**Examples:**
+
+```bash
+# Disable in-band OS-to-BMC access (harden to out-of-band only)
+bmctools redfish kcs disable -i 10.10.10.10 -u admin -p password
+
+# Check the current state
+bmctools redfish kcs status -o json-pretty
+
+# Re-enable in-band access
+bmctools redfish kcs enable
+```
+
 ### Dell-Specific Commands
 
 ```bash
