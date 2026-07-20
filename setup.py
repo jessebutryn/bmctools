@@ -6,7 +6,7 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setup(
     name='bmctools',
-    version='0.1.20',
+    version='0.1.21',
     packages=find_packages(where='src'),
     package_dir={'': 'src'},
     install_requires=[
