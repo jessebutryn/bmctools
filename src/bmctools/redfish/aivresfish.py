@@ -356,6 +356,34 @@ class AivresFish:
         raise ValueError(f'Failed to set boot override, status code: {last_response.status_code}{error_detail}')
 
 
+    def set_next_onetime_boot(self, boot_source: str = 'Pxe') -> bool:
+        """Set the next one-time boot source on an Aivres (AMI-based) system.
+
+        This is the Aivres entry point into the network-boot flow. AMI-based
+        Aivres BMCs expose no writable ``Boot.BootOrder`` and their
+        ``BootSourceOverrideTarget@Redfish.AllowableValues`` only offers the
+        generic targets ``None``, ``Pxe``, ``Hdd``, ``Cd``, ``Diags``,
+        ``BiosSetup`` and ``Usb`` — there is no ``UefiBootNext`` /
+        ``UefiTarget`` to point at a specific NIC. For network boot we
+        therefore set the generic ``Pxe`` override and leave NIC selection to
+        the BIOS boot order.
+
+        The underlying PATCH to /Systems/{id} requires an If-Match ETag header
+        (the BMC returns HTTP 428 without one); ``set_boot_override`` fetches
+        the ETag and includes it, and expects a 204 (or 200) on success.
+
+        Args:
+            boot_source: Boot source target (default 'Pxe').
+
+        Returns:
+            True on success.
+
+        Raises:
+            ValueError: If the PATCH is rejected.
+        """
+        return self.set_boot_override(boot_source, enabled='Once')
+
+
     def set_bios_settings(self, attributes: dict) -> bool:
         """Set BIOS attributes via /Bios/Settings with the required If-Match ETag header."""
         settings_uri = f'{self._system_uri()}/Bios/Settings'
