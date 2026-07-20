@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- `redfish/aivresfish.py`: `AivresFish.set_next_onetime_boot()` adds Aivres (AMI-based BMC) support to the network-boot flow. Aivres systems expose no writable `Boot.BootOrder` and only allow generic `BootSourceOverrideTarget` values (no `UefiBootNext`/`UefiTarget`), so a specific NIC cannot be targeted — the method sets the generic `Pxe` one-time override and leaves NIC selection to the BIOS boot order. It delegates to `set_boot_override()`, which fetches the ETag and sends the required `If-Match` header on the `PATCH /redfish/v1/Systems/1` (the BMC returns HTTP 428 without it).
+
+---
+
 ## [0.1.14] - 2026-06-24
 
 ### Fixed

@@ -131,6 +131,20 @@ bmctools redfish boot find-by-mac -m 04:32:01:D8:C0:B0 --type PXE
 bmctools redfish boot set-order -o "Boot0003,Boot0001,Boot0000,Boot0002"
 ```
 
+**Network boot on Aivres (AMI-based BMC):** Aivres systems expose no writable
+`Boot.BootOrder`, and `BootSourceOverrideTarget` only allows the generic
+targets (`None`, `Pxe`, `Hdd`, `Cd`, `Diags`, `BiosSetup`, `Usb`) — there is no
+`UefiBootNext`/`UefiTarget` to point at a specific NIC. Network boot therefore
+sets the generic `Pxe` one-time override and leaves NIC selection to the BIOS
+boot order. The PATCH to `/redfish/v1/Systems/1` requires an `If-Match` ETag
+header (the BMC returns HTTP 428 without one), which is handled automatically.
+
+```bash
+# Trigger a one-time PXE (network) boot on Aivres, then reboot to apply
+bmctools redfish boot set-override -t Pxe --mode Once
+bmctools redfish system reset --type ForceRestart
+```
+
 ### Redfish Firmware Management
 
 ```bash
