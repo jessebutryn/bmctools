@@ -111,6 +111,11 @@ class Redfish:
         if manufacturer in ['cisco', 'cisco systems inc', 'cisco systems inc.']:
             from bmctools.redfish.ciscofish import CiscoFish
             return CiscoFish(self.api)
+        # Lenovo reports several variants ('Lenovo', 'Lenovo(R)', 'Lenovo Global
+        # Technology (United States) Inc.'), so match on the prefix.
+        if manufacturer and manufacturer.startswith('lenovo'):
+            from bmctools.redfish.lenovofish import LenovoFish
+            return LenovoFish(self.api)
         if manufacturer in ['aivres', 'inspur', 'inspur electronic information industry co., ltd.']:
             from bmctools.redfish.aivresfish import AivresFish
             return AivresFish(self.api)

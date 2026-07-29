@@ -12,6 +12,7 @@ A Python library and CLI for managing Baseboard Management Controllers (BMCs) ac
   - **Supermicro**: Boot order and boot option queries
   - **Gigabyte (GIGA Computing)**: Boot management with ETag support, NIC discovery, boot-first-by-MAC
   - **Cisco (CIMC/UCS)**: Boot management, NIC discovery, boot-first-by-MAC
+  - **Lenovo (XClarity Controller / ThinkSystem)**: Boot management with standard and OEM boot order, one-time network boot, NIC discovery, boot-first-by-MAC
 - **Boot Management**: Get/set boot order, list boot options, search by MAC address or alias
 - **PXE Automation**: Enable PXE on a NIC by MAC address, set boot order, and reboot - all in one command
 - **Firmware Updates**: Upload BIOS and BMC firmware via Redfish
@@ -88,7 +89,7 @@ rf.set_boot_order(["Boot0003", "Boot0001", "Boot0000", "Boot0002"])
 | `-i, --ip, --host` | `BMC_HOST` | BMC IP address or hostname |
 | `-u, --username` | `BMC_USERNAME` | BMC username |
 | `-p, --password` | `BMC_PASSWORD` | BMC password |
-| `-m, --manufacturer` | `BMC_MANUFACTURER` | Force manufacturer: `asus`, `dell`, `supermicro`, `gigabyte`, `cisco` |
+| `-m, --manufacturer` | `BMC_MANUFACTURER` | Force manufacturer: `asus`, `dell`, `supermicro`, `gigabyte`, `cisco`, `lenovo` |
 | `-k, --insecure` | `BMC_INSECURE` | Disable SSL verification (default: enabled) |
 | `--secure` | | Enable SSL verification (overrides `-k`) |
 | `-o, --output` | | Output format: `json`, `json-pretty`, `table`, `text` |
@@ -141,6 +142,25 @@ header (the BMC returns HTTP 428 without one), which is handled automatically.
 
 ```bash
 # Trigger a one-time PXE (network) boot on Aivres, then reboot to apply
+bmctools redfish boot set-override -t Pxe --mode Once
+bmctools redfish system reset --type ForceRestart
+```
+
+**Network boot on Lenovo (XClarity Controller):** XCC accepts the standard
+one-time boot source override, so `-t Pxe --mode Once` is all a network boot
+needs — NIC selection then falls to the BIOS boot order. To boot a *specific*
+port instead, pass the MAC to `LenovoFish.set_next_onetime_boot()`, which
+resolves it to a boot option and targets it via `UefiBootNext` (falling back to
+the generic `Pxe` override if the MAC has no boot option). Boot order itself is
+firmware-dependent: recent XCC exposes the standard `Boot.BootOrder` array with
+a `BootOptions` collection, while older firmware exposes only the Lenovo OEM
+`/Systems/1/Oem/Lenovo/BootSettings` resource, where the order is a list of
+device names in `BootOrderNext`. `LenovoFish` probes for the standard
+properties and falls back to the OEM resource, and sends an `If-Match` ETag on
+PATCH when the BMC provides one.
+
+```bash
+# Trigger a one-time PXE (network) boot on Lenovo, then reboot to apply
 bmctools redfish boot set-override -t Pxe --mode Once
 bmctools redfish system reset --type ForceRestart
 ```
@@ -412,7 +432,7 @@ from bmctools.redfish.redfish import Redfish
 rf = Redfish(ip, username, password, verify_ssl=False, manufacturer=None)
 ```
 
-The `manufacturer` parameter is optional. If not provided, it is auto-detected from the Redfish API. Valid values: `asus`, `dell`, `supermicro`, `gigabyte`, `cisco`.
+The `manufacturer` parameter is optional. If not provided, it is auto-detected from the Redfish API. Valid values: `asus`, `dell`, `supermicro`, `gigabyte`, `cisco`, `lenovo`.
 
 #### Common Methods (All Manufacturers)
 
@@ -486,6 +506,32 @@ cisco.get_firmware_inventory()                         # -> firmware version dic
 ```
 
 Cisco CIMC systems use serial-number-based system IDs (e.g., `WZP...`), which are auto-discovered.
+
+#### Lenovo-Specific Methods
+
+```python
+lenovo = rf.manufacturer_class
+
+lenovo.set_next_onetime_boot('Pxe')                     # one-time boot override
+lenovo.set_next_onetime_boot('Pxe', mac_address=mac)    # target a specific NIC via UefiBootNext
+lenovo.set_boot_first_by_mac(mac, boot_type='PXE')      # moves option to front of boot order
+lenovo.get_network_interfaces()                         # -> list of EthernetInterface dicts
+lenovo.get_firmware_inventory()                         # -> firmware version dict
+lenovo.get_bios_settings()                              # -> BIOS attributes
+lenovo.set_bios_settings({'BootModes.SystemBootMode': 'UEFI Mode'})  # staged on /Bios/Pending
+```
+
+`get_boot_order()` / `set_boot_order()` work on whichever mechanism the
+firmware exposes: the standard `Boot.BootOrder` array of `BootNNNN` references,
+or the Lenovo OEM `BootOrderNext` list of device names. The two namespaces are
+not interchangeable — pass values in the same form `get_boot_order()` returned.
+`set_boot_first_by_mac()` requires the standard `BootOptions` collection, since
+OEM device names carry no MAC information; on firmware without it, use
+`set_next_onetime_boot()` or set the order by device name.
+
+BIOS attributes are staged on the pending-settings resource discovered from
+`@Redfish.Settings` (`/Bios/Pending` on XCC) rather than the conventional
+`/Bios/Settings`.
 
 ### Direct API Access
 
@@ -572,6 +618,7 @@ The following strings are matched (case-insensitive) from the Redfish `Manufactu
 | Supermicro | `supermicro` |
 | Gigabyte | `gigabyte`, `giga computing` |
 | Cisco | `cisco`, `cisco systems inc`, `cisco systems inc.` |
+| Lenovo | any string starting with `lenovo` (e.g. `Lenovo`, `Lenovo(R)`, `Lenovo Global Technology (United States) Inc.`) |
 
 ### Caching
 
