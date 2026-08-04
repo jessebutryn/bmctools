@@ -5,7 +5,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.2.0] - 2026-08-04
 
 ### Added
 - `redfish/lenovofish.py`: new `LenovoFish` implementation adds Lenovo (XClarity Controller / ThinkSystem) support, wired into `Redfish.instantiate_manufacturer_class()` for any `Manufacturer` string starting with `lenovo` and selectable with `-m lenovo`. Covers boot order, boot options, boot source override, one-time network boot, per-NIC network boot order, BIOS settings, system/BMC reset, firmware inventory and NIC discovery. Verified against a ThinkSystem SR685a V3 (XCC `16E-6.10`, UEFI `R5E122B`), which drove four platform-specific decisions:
